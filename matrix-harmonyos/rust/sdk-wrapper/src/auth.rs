@@ -19,6 +19,7 @@ fn format_homeserver_url(homeserver: &str) -> String {
 
 /// 会话数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionData {
     pub user_id: String,
     pub device_id: String,

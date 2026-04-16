@@ -19,6 +19,7 @@ export struct RoomListPage {
   @State isLoading: boolean = true;
 
   @Consume('navPathStack') navPathStack: NavPathStack;
+  @Consume('isAuthenticated') isAuthenticated: boolean;
 
   async aboutToAppear(): Promise<void> {
     const session = AuthService.getSession();
@@ -43,7 +44,7 @@ export struct RoomListPage {
           .fontSize(14)
           .onClick(async () => {
             await AuthService.logout();
-            this.navPathStack.replacePathByName('LoginPage', null);
+            this.isAuthenticated = false;
           })
       }
       .width('100%')

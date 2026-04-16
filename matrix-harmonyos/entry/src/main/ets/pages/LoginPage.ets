@@ -19,6 +19,7 @@ export struct LoginPage {
   @State errorMessage: string = '';
 
   @Consume('navPathStack') navPathStack: NavPathStack;
+  @Consume('isAuthenticated') isAuthenticated: boolean;
 
   private async handleLogin(): Promise<void> {
     if (this.isLoading) return;
@@ -40,7 +41,7 @@ export struct LoginPage {
 
     if (session) {
       hilog.info(DOMAIN, TAG, 'Login successful: %{public}s', session.userId);
-      this.navPathStack.replacePathByName('RoomListPage', null);
+      this.isAuthenticated = true;
     } else {
       this.errorMessage = '登录失败，请检查用户名和密码';
     }

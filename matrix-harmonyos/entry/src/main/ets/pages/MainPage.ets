@@ -7,6 +7,7 @@ import { AuthService } from '../services/AuthService';
 import { LoginPage } from './LoginPage';
 import { RoomListPage } from './RoomListPage';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { common } from '@kit.AbilityKit';
 
 const DOMAIN = 0x0000;
 const TAG = 'MainPage';
@@ -15,12 +16,25 @@ const TAG = 'MainPage';
 @Component
 struct MainPage {
   @Provide('navPathStack') navPathStack: NavPathStack = new NavPathStack();
+  @Provide('isAuthenticated') isAuthenticated: boolean = false;
   @State isInitialized: boolean = false;
   @State initFailed: boolean = false;
   @State initErrorMessage: string = '';
-  @State isAuthenticated: boolean = false;
 
   async aboutToAppear(): Promise<void> {
+    // 初始化 AuthService 的数据目录
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      AuthService.init(context);
+      hilog.info(DOMAIN, TAG, 'AuthService initialized with dataDir: %{public}s', context.filesDir);
+    } catch (err) {
+      const error = err as Error;
+      hilog.error(DOMAIN, TAG, 'Failed to get context: %{public}s', error.message);
+      this.initFailed = true;
+      this.initErrorMessage = '无法获取应用上下文';
+      return;
+    }
+
     const success = await initMatrixBridge();
     if (success) {
       this.isInitialized = true;
