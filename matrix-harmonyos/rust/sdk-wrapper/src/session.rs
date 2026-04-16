@@ -11,7 +11,17 @@ fn session_file_path(data_dir: &Path) -> PathBuf {
     data_dir.join("session.json")
 }
 
+/// 确保数据目录存在
+async fn ensure_data_dir(data_dir: &Path) -> Result<(), BridgeError> {
+    if !data_dir.exists() {
+        tokio::fs::create_dir_all(data_dir).await
+            .map_err(|e| BridgeError::new(ErrorCode::StorageError, e.to_string()))?;
+    }
+    Ok(())
+}
+
 pub async fn save_session(session: &SessionData, data_dir: &Path) -> Result<(), BridgeError> {
+    ensure_data_dir(data_dir).await?;
     let path = session_file_path(data_dir);
     let json = serde_json::to_string(session)
         .map_err(|e| BridgeError::new(ErrorCode::StorageError, e.to_string()))?;
