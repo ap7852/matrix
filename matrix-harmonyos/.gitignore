@@ -10,3 +10,7 @@
 /.clang-tidy
 **/.test
 /.appanalyzer
+# Rust build artifacts
+**/*.so
+**/target/
+rust/target/
