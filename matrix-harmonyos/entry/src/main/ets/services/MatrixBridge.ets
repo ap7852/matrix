@@ -1,7 +1,7 @@
 /**
  * Matrix Bridge - NAPI 模块加载器
  *
- * 动态加载 libmatrix_bridge.so 并初始化 tokio runtime
+ * 加载 Rust NAPI 模块 libmatrix_bridge 并初始化 tokio runtime
  */
 
 import { hilog } from '@kit.PerformanceAnalysisKit';

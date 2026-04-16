@@ -1,5 +1,5 @@
 {
-  "name": "libmatrix_bridge",
+  "name": "libmatrix_bridge.so",
   "types": "./Index.d.ts",
   "version": "0.1.0",
   "description": "Element X HarmonyOS Rust NAPI Bridge"
