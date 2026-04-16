@@ -7,3 +7,7 @@ ar = "llvm-ar"
 TARGET_CC = "/home/ap7852/command-line-tools/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang"
 TARGET_AR = "/home/ap7852/command-line-tools/sdk/default/openharmony/native/llvm/bin/llvm-ar"
 OHOS_NDK_HOME = "/home/ap7852/command-line-tools/sdk/default/openharmony"
+
+# 增加递归限制，解决 matrix-sdk 编译问题
+[build]
+rustflags = ["-C", "symbol-mangling-version=v0"]

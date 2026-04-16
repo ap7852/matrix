@@ -20,8 +20,8 @@ napi-derive-ohos = "1.1.6"
 
 # === Matrix SDK (严格版本锁定) ===
 # 注意：必须使用 =0.16.0 精确锁定语法，禁止宽松约束
-# 必须禁用默认 features (包含 native-tls)，使用 rustls-tls
-matrix-sdk = { version = "=0.16.0", default-features = false, features = ["sqlite", "rustls-tls", "e2e-encryption"] }
+# Phase 0: 暂时禁用 sqlite（链接问题），Phase 1 将配置 HarmonyOS SQLite
+matrix-sdk = { version = "=0.16.0", default-features = false, features = ["rustls-tls", "e2e-encryption"] }
 matrix-sdk-ui = { version = "=0.16.0", default-features = false, features = ["rustls-tls"] }
 
 # === 异步运行时 ===
@@ -41,3 +41,14 @@ tracing-subscriber = "0.3"
 # === 错误处理 ===
 thiserror = "2"
 anyhow = "1"
+
+# === Futures ===
+futures = "0.3"
+
+# === 编译配置 ===
+# 增加代码生成单元，帮助解决 matrix-sdk 的编译深度问题
+[profile.dev]
+codegen-units = 256
+
+[profile.release]
+codegen-units = 256

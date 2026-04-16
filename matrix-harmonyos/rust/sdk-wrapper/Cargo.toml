@@ -17,6 +17,7 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 ring = { workspace = true }
 
-# Phase 2 将启用 matrix-sdk
-# matrix-sdk = { workspace = true }
-# matrix-sdk-ui = { workspace = true }
+# matrix-sdk 已启用（Phase 0 核心登录）
+matrix-sdk = { workspace = true }
+matrix-sdk-ui = { workspace = true }
+futures = { workspace = true }

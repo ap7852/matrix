@@ -10,15 +10,14 @@
 //!
 //! 禁止在此层包含任何业务逻辑！
 
+// 增加递归限制，解决 matrix-sdk 编译时的深度限制问题
+#![recursion_limit = "1024"]
+
 mod runtime;
 mod error;
 mod hello;
-
-// Phase 2 将添加:
-// mod auth;
-// mod room_list;
-// mod timeline;
-// mod send;
+mod auth;
+mod room_list;
 
 use napi_ohos::bindgen_prelude::*;
 use napi_derive_ohos::napi;
@@ -32,5 +31,11 @@ pub fn init() {
     // 初始化日志 (待实现)
 }
 
-// 导出 hello world 测试函数
+// 导出测试函数
 pub use hello::*;
+
+// 导出认证函数
+pub use auth::*;
+
+// 导出房间列表函数
+pub use room_list::*;

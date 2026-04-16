@@ -5,13 +5,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "C:\\Users\\chen\\.ohos\\config\\default_chen_IHx859AULq8hKQbv5mJrPZ3ltslxieXapeafQe-06ec=.cer",
+          "certpath": "/home/ap7852/.ohos/config/debug_certificate.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001B37BEA28275B54E253DF7342586596218C37F9B8CB1C140790FF2B69A19D2C8810CFC1A5EE87890",
-          "profile": "C:\\Users\\chen\\.ohos\\config\\default_chen_IHx859AULq8hKQbv5mJrPZ3ltslxieXapeafQe-06ec=.p7b",
+          "keyPassword": "debug123",
+          "profile": "/home/ap7852/.ohos/config/debug_profile.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\chen\\.ohos\\config\\default_chen_IHx859AULq8hKQbv5mJrPZ3ltslxieXapeafQe-06ec=.p12",
-          "storePassword": "0000001B4CE46F1913675CD29B28A3AFFC8C0C26C2E2958ADB62DD2199E5039D25C5F1DFADAF9B8545F1FF"
+          "storeFile": "/home/ap7852/.ohos/config/debug_keystore.p12",
+          "storePassword": "debug123"
         }
       }
     ],
