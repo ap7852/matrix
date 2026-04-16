@@ -31,6 +31,18 @@ In DevEco Studio, use the standard build/run buttons or:
 - Build > Make Hap(s) to build
 - Run > Run 'entry' to deploy
 
+### Automation Scripts (Linux CLI)
+```bash
+# Full cycle: Rust build → HAP build → Device deploy → Log monitor
+./debug.sh
+
+# Rust only: Build NAPI bridge and copy .so to cpp/
+./build.sh
+
+# Rust build manually
+cd rust && cargo +1.88 build --target aarch64-unknown-linux-ohos --release
+```
+
 ## Testing
 
 Uses `@ohos/hypium` test framework. Test files should be placed in `entry/src/ohosTest/ets/`.
@@ -49,11 +61,11 @@ matrix-harmonyos/
 │   ├── src/main/
 │   │   ├── ets/            # ArkTS source code
 │   │   │   ├── entryability/  # EntryAbility (app lifecycle)
-│   │   │   ├── pages/         # UI pages
-│   │   │   ├── components/    # UI components (to be created)
-│   │   │   ├── services/      # NAPI service wrappers (to be created)
-│   │   │   └── models/        # Data models (to be created)
-│   │   ├── cpp/            # Native C++ code (will become Rust via ohos-rs)
+│   │   │   ├── pages/         # UI pages (MainPage, LoginPage, RoomListPage)
+│   │   │   ├── components/    # UI components (RoomListItem)
+│   │   │   ├── services/      # NAPI wrappers (AuthService, RoomListService)
+│   │   │   └── models/        # Data models (AuthModels, RoomModels)
+│   │   ├── cpp/            # Native code (Rust .so via ohos-rs)
 │   │   └── module.json5    # Module configuration
 │   ├── build-profile.json5 # Module build config
 │   └── hvigorfile.ts       # Module Hvigor config
@@ -80,13 +92,20 @@ All SQLite operations must go through a single Mutex-protected tokio task to avo
 - SQLite passphrase: Store in Asset Store Kit
 - Never store sensitive data in Preferences or plain files
 
+### ArkUI State Management
+- `@Provide/@Consume` pattern for cross-component state sharing
+- MainPage provides `isAuthenticated` and `navPathStack`
+- LoginPage/RoomListPage consume and update authentication state
+- `@Provide` alone provides state management (no `@State` combined)
+- Catch blocks must use explicit types: `const error = err as Error`
+
 ## Native Code Development
 
-Currently uses basic C++ NAPI. Will transition to ohos-rs (Rust) for matrix-rust-sdk integration:
+Uses ohos-rs (Rust NAPI) for matrix-rust-sdk integration:
 
-1. Install Rust with target `aarch64-unknown-linux-ohos`
+1. Rust target: `aarch64-unknown-linux-ohos` (requires Rust 1.88)
 2. Configure `.cargo/config.toml` with OHOS NDK paths
-3. Use `ring` crate requires explicit `TARGET_CC` and `TARGET_AR` env vars
+3. `ring` crate requires `TARGET_CC` and `TARGET_AR` env vars in config.toml
 
 ### Critical Cargo Version Locking
 Always use exact version syntax for matrix-rust-sdk:
