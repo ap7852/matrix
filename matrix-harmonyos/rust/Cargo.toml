@@ -1,0 +1,43 @@
+# Element X HarmonyOS Rust Workspace
+#
+# 三层架构：
+# - napi-bridge: ohos-rs NAPI 导出层 (Rust → ArkTS FFI)
+# - sdk-wrapper: matrix-rust-sdk 封装层 (业务逻辑)
+
+[workspace]
+members = ["napi-bridge", "sdk-wrapper"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+
+[workspace.dependencies]
+# === OHOS NAPI 桥接 ===
+napi-ohos = { version = "1.1.6", features = ["async"] }
+napi-derive-ohos = "1.1.6"
+
+# === Matrix SDK (严格版本锁定) ===
+# 注意：必须使用 =0.16.0 精确锁定语法，禁止宽松约束
+# 必须禁用默认 features (包含 native-tls)，使用 rustls-tls
+matrix-sdk = { version = "=0.16.0", default-features = false, features = ["sqlite", "rustls-tls", "e2e-encryption"] }
+matrix-sdk-ui = { version = "=0.16.0", default-features = false, features = ["rustls-tls"] }
+
+# === 异步运行时 ===
+tokio = { version = "1", features = ["full"] }
+
+# === 序列化 ===
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# === 密码学 (间接依赖，验证编译) ===
+ring = "0.17"
+
+# === 日志 ===
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# === 错误处理 ===
+thiserror = "2"
+anyhow = "1"

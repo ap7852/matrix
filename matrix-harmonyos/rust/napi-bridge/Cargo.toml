@@ -1,0 +1,23 @@
+[package]
+name = "napi-bridge"
+description = "ohos-rs NAPI 桥接层 - Rust to ArkTS FFI exports"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]  # 动态库，供 HarmonyOS 加载
+name = "matrix_bridge"
+
+[dependencies]
+napi-ohos = { workspace = true }
+napi-derive-ohos = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+sdk-wrapper = { path = "../sdk-wrapper" }
+
+[build-dependencies]
+napi-build-ohos = "1.1"  # NAPI 代码生成构建依赖

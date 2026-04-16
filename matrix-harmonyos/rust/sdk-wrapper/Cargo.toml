@@ -1,0 +1,22 @@
+[package]
+name = "sdk-wrapper"
+description = "matrix-rust-sdk 封装层 - 业务逻辑实现"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["rlib"]  # 静态库，供 napi-bridge 引用
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+ring = { workspace = true }
+
+# Phase 2 将启用 matrix-sdk
+# matrix-sdk = { workspace = true }
+# matrix-sdk-ui = { workspace = true }
