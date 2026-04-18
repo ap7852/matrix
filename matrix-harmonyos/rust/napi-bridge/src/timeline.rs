@@ -31,6 +31,8 @@ pub fn napi_subscribe_timeline(
     room_id: String,
     callback: Function<'static>,
 ) -> Result<()> {
+    tracing::info!("NAPI: subscribe_timeline called for room: {}", room_id);
+
     // 使用 build_threadsafe_function + build_callback，让 Rust 推断类型
     let tsfn = callback
         .build_threadsafe_function::<String>()
@@ -47,6 +49,8 @@ pub fn napi_subscribe_timeline(
 
         if let Err(e) = result {
             tracing::error!("Timeline subscribe error for room {}: {:?}", room_id, e);
+        } else {
+            tracing::info!("NAPI: Timeline subscribed successfully for room: {}", room_id);
         }
     });
 
@@ -78,15 +82,21 @@ pub async fn napi_send_text(
 /// 加载更早的消息，返回是否有更多消息可加载
 #[napi]
 pub async fn napi_paginate_backwards(room_id: String) -> Result<bool> {
-    get_runtime()
+    tracing::info!("NAPI: paginate_backwards called for room: {}", room_id);
+    let result = get_runtime()
         .spawn(async move {
             let result = sdk_wrapper::timeline::paginate_backwards(&room_id)
                 .await
-                .map_err(|e| Error::from_reason(e.to_json()))?;
+                .map_err(|e| {
+                    tracing::error!("Pagination failed: {}", e.to_json());
+                    Error::from_reason(e.to_json())
+                })?;
+            tracing::info!("NAPI: Pagination result: more={}", result);
             Ok(result)
         })
         .await
-        .map_err(|e| Error::from_reason(e.to_string()))?
+        .map_err(|e| Error::from_reason(e.to_string()))?;
+    result
 }
 
 /// 发送已读回执
