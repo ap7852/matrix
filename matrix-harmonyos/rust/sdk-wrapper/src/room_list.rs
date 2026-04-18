@@ -208,15 +208,32 @@ fn convert_vector_diff(diff: VectorDiff<matrix_sdk_ui::room_list_service::RoomLi
 /// - displayName 优先使用 cached_display_name
 /// - fallback 到 name 或 canonical_alias
 fn room_to_summary(room: matrix_sdk_ui::room_list_service::RoomListItem) -> RoomSummary {
-    // 优先使用 cached_display_name（已计算的名字）
+    // 获取房间名称，优先级：
+    // 1. cached_display_name (计算后的显示名)
+    // 2. name() (m.room.name 事件)
+    // 3. canonical_alias (规范化别名)
+    // 4. alt_aliases (备用别名)
+    // 5. room_id (最后 fallback)
     let name = room.cached_display_name()
         .map(|n| n.to_string())
-        // Fallback: 使用 Room.name()（状态事件中的名字）
         .or_else(|| room.name())
-        // Fallback: 使用 canonical_alias
         .or_else(|| room.canonical_alias().map(|a| a.to_string()))
-        // 最后 fallback: 使用 room_id
-        .unwrap_or_else(|| room.room_id().to_string());
+        .or_else(|| {
+            // 尝试备用别名
+            room.alt_aliases()
+                .first()
+                .map(|a| a.to_string())
+        })
+        .unwrap_or_else(|| {
+            // 最后使用 room_id，但尝试简化显示
+            let id = room.room_id().to_string();
+            // 提取本地部分（去掉服务器名）
+            if id.contains(':') {
+                id.split(':').next().unwrap_or(&id).to_string()
+            } else {
+                id
+            }
+        });
 
     // RoomListItem derefs to Room，可调用 encryption_state()
     use matrix_sdk::EncryptionState;

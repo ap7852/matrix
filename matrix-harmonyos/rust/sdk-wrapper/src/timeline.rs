@@ -105,6 +105,7 @@ async fn get_timeline(room_id: &str) -> Result<Arc<Timeline>, BridgeError> {
 /// 订阅 Timeline 更新
 ///
 /// 使用已存储的 Timeline 实例订阅更新
+/// 初始化时会自动加载初始批次的历史消息
 pub async fn subscribe_timeline(
     room_id: &str,
     update_callback: impl Fn(String) + Send + 'static,
@@ -123,20 +124,37 @@ pub async fn subscribe_timeline(
         .collect();
 
     let initial_len = initial.len();
+    debug!("Initial timeline items: {}", initial_len);
+
     if !initial.is_empty() {
         let update = TimelineUpdate::Reset { items: initial };
         let json = serde_json::to_string(&update).unwrap_or_default();
-        debug!("Sending initial timeline: {} items", initial_len);
+        debug!("Sending initial timeline reset");
         update_callback(json);
     }
 
-    // 监听更新流
+    // 如果初始消息太少，自动加载更多
+    if initial_len < 20 {
+        debug!("Auto-paginating backwards for room: {}", room_id);
+        let more = timeline.paginate_backwards(20).await
+            .map_err(|e| {
+                debug!("Auto-pagination failed: {}", e);
+                BridgeError::new(ErrorCode::NetworkError, e.to_string())
+            })?;
+        debug!("Auto-pagination complete: more={}", more);
+    }
+
+    // 监听更新流 - paginate 产生的新消息会通过 stream 推送
     let room_id_str = room_id.to_string();
+    let callback = update_callback;
     tokio::spawn(async move {
         use matrix_sdk::stream::StreamExt;
         let mut stream = Box::pin(stream);
 
+        debug!("Timeline stream started for room: {}", room_id_str);
+
         while let Some(diffs) = stream.next().await {
+            debug!("Received {} diffs for room: {}", diffs.len(), room_id_str);
             let converted: Vec<TimelineUpdate> = diffs
                 .into_iter()
                 .flat_map(|diff| convert_timeline_diff(diff))
@@ -144,8 +162,8 @@ pub async fn subscribe_timeline(
 
             for update in converted {
                 let json = serde_json::to_string(&update).unwrap_or_default();
-                debug!("Sending timeline update");
-                update_callback(json);
+                debug!("Sending timeline update via callback");
+                callback(json);
             }
         }
 

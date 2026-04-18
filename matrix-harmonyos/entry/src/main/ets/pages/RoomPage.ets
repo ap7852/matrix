@@ -194,6 +194,17 @@ export struct RoomPage {
           .margin({ left: 12 })
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+
+        // 测试按钮 - 手动触发分页
+        Button('加载更多')
+          .fontSize(12)
+          .height(32)
+          .backgroundColor('#E0E0E0')
+          .fontColor('#333333')
+          .enabled(!this.isLoadingMore && this.hasMoreMessages)
+          .onClick(() => {
+            this.loadMoreMessages();
+          })
       }
       .width('100%')
       .height(56)
@@ -225,7 +236,7 @@ export struct RoomPage {
         .justifyContent(FlexAlign.Center)
       } else {
         List() {
-          // 加载更多指示器
+          // 加载更多指示器 - 在顶部显示
           if (this.isLoadingMore) {
             ListItem() {
               Row() {
@@ -240,6 +251,18 @@ export struct RoomPage {
               .width('100%')
               .justifyContent(FlexAlign.Center)
               .padding({ top: 8, bottom: 8 })
+            }
+          }
+
+          // 历史消息加载提示
+          if (this.hasMoreMessages && !this.isLoadingMore) {
+            ListItem() {
+              Text('↑ 向上滚动加载历史消息')
+                .fontSize(12)
+                .opacity(0.5)
+                .width('100%')
+                .textAlign(TextAlign.Center)
+                .padding({ top: 4, bottom: 4 })
             }
           }
 
@@ -299,10 +322,22 @@ export struct RoomPage {
         .width('100%')
         .layoutWeight(1)
         .backgroundColor('#FFFFFF')
+        .edgeEffect(EdgeEffect.Spring)
         .onReachEdge((edge: Edge) => {
           // 当滚动到顶部时加载更多消息
+          hilog.info(DOMAIN, TAG, 'onReachEdge triggered: edge=%{public}d', edge);
           if (edge === Edge.Top && !this.isLoadingMore && this.hasMoreMessages) {
             this.loadMoreMessages();
+          }
+        })
+        // 添加边缘检测阈值，更早触发
+        .onScroll((scrollOffset: number, scrollState: ScrollState) => {
+          // 当滚动位置接近顶部时也触发加载
+          if (scrollOffset < 50 && scrollState === ScrollState.ScrollingUp) {
+            if (!this.isLoadingMore && this.hasMoreMessages) {
+              hilog.info(DOMAIN, TAG, 'Near top, triggering load more');
+              this.loadMoreMessages();
+            }
           }
         })
       }
