@@ -163,6 +163,9 @@ pub fn has_session() -> bool {
 
 /// 登出
 pub async fn logout() -> Result<(), BridgeError> {
+    // 先清理 Timeline 资源
+    crate::timeline::clear_all_timelines().await;
+
     let client = get_client()
         .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No session"))?;
 

@@ -2,20 +2,26 @@
 //!
 //! 使用 matrix-sdk-ui 的 Timeline 进行消息管理
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock};
 
 use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
     EncryptedMessage, EventSendState, EventTimelineItem, MsgLikeKind, RoomExt,
-    TimelineDetails, TimelineItem, TimelineItemContent,
+    TimelineDetails, TimelineItem, TimelineItemContent, Timeline,
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 use tracing::debug;
 
 use crate::client::get_client;
 use crate::error::{BridgeError, ErrorCode};
+
+/// 全局 Timeline 存储
+/// 每个房间一个 Timeline 实例，避免重复创建
+static TIMELINES: LazyLock<RwLock<HashMap<String, Arc<Timeline>>>> = LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// 时间线消息数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +68,8 @@ pub enum TimelineUpdate {
 }
 
 /// 初始化房间 Timeline
+///
+/// 创建并存储 Timeline 实例，后续操作使用同一实例
 pub async fn init_timeline(room_id: &str) -> Result<(), BridgeError> {
     let client = get_client()
         .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
@@ -74,32 +82,37 @@ pub async fn init_timeline(room_id: &str) -> Result<(), BridgeError> {
 
     debug!("Creating Timeline for room: {}", room_id);
 
-    let _timeline = room.timeline().await
+    let timeline = room.timeline().await
         .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
 
-    debug!("Timeline created for room: {}", room_id);
+    // 存储 Timeline 实例
+    let mut timelines = TIMELINES.write().await;
+    timelines.insert(room_id.to_string(), Arc::new(timeline));
+
+    debug!("Timeline created and stored for room: {}", room_id);
 
     Ok(())
 }
 
+/// 获取已存储的 Timeline 实例
+async fn get_timeline(room_id: &str) -> Result<Arc<Timeline>, BridgeError> {
+    let timelines = TIMELINES.read().await;
+    timelines.get(room_id)
+        .cloned()
+        .ok_or_else(|| BridgeError::new(ErrorCode::TimelineNotInitialized, "Timeline not initialized, call init_timeline first"))
+}
+
 /// 订阅 Timeline 更新
+///
+/// 使用已存储的 Timeline 实例订阅更新
 pub async fn subscribe_timeline(
     room_id: &str,
     update_callback: impl Fn(String) + Send + 'static,
 ) -> Result<(), BridgeError> {
-    let client = get_client()
-        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
-
-    let room_id = OwnedRoomId::try_from(room_id)
-        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
-
-    let room = client.get_room(&room_id)
-        .ok_or_else(|| BridgeError::new(ErrorCode::RoomNotFound, "Room not found"))?;
-
     debug!("Subscribing to Timeline for room: {}", room_id);
 
-    let timeline = room.timeline().await
-        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+    // 使用已存储的 Timeline
+    let timeline = get_timeline(room_id).await?;
 
     let (items, stream) = timeline.subscribe().await;
 
@@ -118,6 +131,7 @@ pub async fn subscribe_timeline(
     }
 
     // 监听更新流
+    let room_id_str = room_id.to_string();
     tokio::spawn(async move {
         use matrix_sdk::stream::StreamExt;
         let mut stream = Box::pin(stream);
@@ -135,13 +149,15 @@ pub async fn subscribe_timeline(
             }
         }
 
-        debug!("Timeline stream ended for room: {}", room_id);
+        debug!("Timeline stream ended for room: {}", room_id_str);
     });
 
     Ok(())
 }
 
 /// 发送文本消息
+///
+/// 通过房间发送消息，E2EE 自动加密
 pub async fn send_text_message(
     room_id: &str,
     text: &str,
@@ -169,20 +185,13 @@ pub async fn send_text_message(
 }
 
 /// 分页加载历史消息
+///
+/// 使用已存储的 Timeline 实例分页加载
 pub async fn paginate_backwards(room_id: &str) -> Result<bool, BridgeError> {
-    let client = get_client()
-        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
-
-    let room_id = OwnedRoomId::try_from(room_id)
-        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
-
-    let room = client.get_room(&room_id)
-        .ok_or_else(|| BridgeError::new(ErrorCode::RoomNotFound, "Room not found"))?;
-
     debug!("Paginating backwards for room: {}", room_id);
 
-    let timeline = room.timeline().await
-        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+    // 使用已存储的 Timeline
+    let timeline = get_timeline(room_id).await?;
 
     let more_messages = timeline
         .paginate_backwards(20)
@@ -321,7 +330,7 @@ fn parse_content(content: &TimelineItemContent) -> MessageContent {
                     };
                     MessageContent::UnableToDecrypt { reason }
                 }
-                MsgLikeKind::Sticker(sticker) => {
+                MsgLikeKind::Sticker(_sticker) => {
                     MessageContent::Text { body: "[贴纸]".to_string() }
                 }
                 _ => MessageContent::Unsupported,
@@ -430,4 +439,13 @@ fn convert_timeline_diff(diff: VectorDiff<Arc<TimelineItem>>) -> Vec<TimelineUpd
             vec![TimelineUpdate::Reset { items: vec![] }]
         }
     }
+}
+
+/// 清理所有 Timeline 实例
+///
+/// 退出登录时调用，释放资源
+pub async fn clear_all_timelines() {
+    let mut timelines = TIMELINES.write().await;
+    timelines.clear();
+    debug!("All timelines cleared");
 }

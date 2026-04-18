@@ -12,7 +12,7 @@ const TAG = 'RoomPage';
 // 导航参数类型
 interface RoomNavParam {
   roomId: string;
-  roomName?: string;
+  roomName: string;
 }
 
 // NavDestination 页面不需要 @Entry 装饰器
@@ -20,19 +20,25 @@ interface RoomNavParam {
 export struct RoomPage {
   // 参数通过 prop 传入，不从 navPathStack 获取
   roomId: string = '';  // 非 @State，由父组件传入
-  @State roomName: string = '';
+  roomName: string = '';  // 非 @State，由父组件传入
+  @State displayRoomName: string = '';  // 用于显示的房间名
   @State isLoading: boolean = true;
   @State inputText: string = '';
   @State isSending: boolean = false;
   @State messages: TimelineMessage[] = []; // @State 数组，UI 会自动刷新
   @State hasMessages: boolean = false; // 用于强制触发 UI 刷新
+  @State isLoadingMore: boolean = false; // 加载历史消息状态
+  @State hasMoreMessages: boolean = true; // 是否还有更多历史消息
 
   @Consume('navPathStack') navPathStack: NavPathStack;
 
   private readTracker: ReadReceiptTracker = new ReadReceiptTracker();
 
   aboutToAppear(): void {
-    hilog.info(DOMAIN, TAG, 'RoomPage aboutToAppear for room: %{public}s', this.roomId);
+    hilog.info(DOMAIN, TAG, 'RoomPage aboutToAppear for room: %{public}s, name: %{public}s', this.roomId, this.roomName);
+
+    // 设置显示的房间名
+    this.displayRoomName = this.roomName || this.roomId;
 
     // 异步初始化 Timeline
     this.initTimeline();
@@ -89,6 +95,29 @@ export struct RoomPage {
   }
 
   /**
+   * 加载历史消息
+   */
+  async loadMoreMessages(): Promise<void> {
+    if (this.isLoadingMore || !this.hasMoreMessages) {
+      return;
+    }
+
+    this.isLoadingMore = true;
+    hilog.info(DOMAIN, TAG, 'Loading more messages for room: %{public}s', this.roomId);
+
+    try {
+      const hasMore = await TimelineService.paginateBackwards(this.roomId);
+      this.hasMoreMessages = hasMore;
+      hilog.info(DOMAIN, TAG, 'Pagination result: hasMore=%{public}s', hasMore.toString());
+    } catch (err) {
+      const error = err as Error;
+      hilog.error(DOMAIN, TAG, 'Load more messages failed: %{public}s', error.message);
+    }
+
+    this.isLoadingMore = false;
+  }
+
+  /**
    * 渲染消息内容
    */
   @Builder
@@ -132,7 +161,7 @@ export struct RoomPage {
           this.navPathStack.pop();
         })
 
-        Text(this.roomName || this.roomId)
+        Text(this.displayRoomName)
           .fontSize(18)
           .fontWeight(FontWeight.Medium)
           .layoutWeight(1)
@@ -170,6 +199,24 @@ export struct RoomPage {
         .justifyContent(FlexAlign.Center)
       } else {
         List() {
+          // 加载更多指示器
+          if (this.isLoadingMore) {
+            ListItem() {
+              Row() {
+                LoadingProgress()
+                  .width(24)
+                  .height(24)
+                Text('加载更多...')
+                  .fontSize(14)
+                  .opacity(0.6)
+                  .margin({ left: 8 })
+              }
+              .width('100%')
+              .justifyContent(FlexAlign.Center)
+              .padding({ top: 8, bottom: 8 })
+            }
+          }
+
           ForEach(this.messages, (message: TimelineMessage, index: number) => {
             ListItem() {
               Row() {
@@ -221,6 +268,12 @@ export struct RoomPage {
         .width('100%')
         .layoutWeight(1)
         .backgroundColor('#FFFFFF')
+        .onReachEdge((edge: Edge) => {
+          // 当滚动到顶部时加载更多消息
+          if (edge === Edge.Top && !this.isLoadingMore && this.hasMoreMessages) {
+            this.loadMoreMessages();
+          }
+        })
       }
 
       // 底部 MessageComposer - 输入框和发送按钮

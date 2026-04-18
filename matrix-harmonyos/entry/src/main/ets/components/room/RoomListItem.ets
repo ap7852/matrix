@@ -8,6 +8,7 @@ import { RoomSummary } from '../../models/RoomModels';
 // 导航参数类型
 interface NavParam {
   roomId: string;
+  roomName: string;
 }
 
 @Reusable
@@ -77,7 +78,7 @@ export struct RoomListItem {
     .height(72)
     .padding({ left: 16, right: 16 })
     .onClick(() => {
-      const navParam: NavParam = { roomId: this.room.roomId };
+      const navParam: NavParam = { roomId: this.room.roomId, roomName: this.room.name };
       this.navPathStack.pushPath({ name: 'RoomPage', param: navParam });
     })
   }
