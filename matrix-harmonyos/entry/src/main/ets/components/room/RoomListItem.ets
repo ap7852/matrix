@@ -4,6 +4,10 @@
  */
 
 import { RoomSummary } from '../../models/RoomModels';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+
+const DOMAIN = 0x0002;
+const TAG = 'RoomListItem';
 
 // 导航参数类型
 interface NavParam {
@@ -27,6 +31,9 @@ export struct RoomListItem {
   }
 
   build() {
+    // 日志输出房间信息，便于调试
+    hilog.debug(DOMAIN, TAG, 'Room: %{public}s, encrypted=%{public}s', this.room.name, this.room.isEncrypted.toString());
+
     Row() {
       // Avatar 占位符 - 显示房间名首字母
       Text(this.room.name.charAt(0).toUpperCase())
@@ -36,7 +43,7 @@ export struct RoomListItem {
         .height(48)
         .textAlign(TextAlign.Center)
         .borderRadius(24)
-        .backgroundColor('#E0E0E0')
+        .backgroundColor(this.room.isEncrypted ? '#E3F2FD' : '#E0E0E0')  // 加密房间用淡蓝色背景
         .fontColor('#666666')
 
       Column() {
@@ -47,15 +54,15 @@ export struct RoomListItem {
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-          // 加密指示器
+          // 加密指示器 - 更醒目
           if (this.room.isEncrypted) {
             Text('🔒')
-              .fontSize(12)
-              .margin({ left: 4 })
+              .fontSize(16)
+              .margin({ left: 6 })
           }
         }
 
-        Text(this.room.lastMessage ?? '')
+        Text(this.room.lastMessage ?? '暂无消息')
           .fontSize(14)
           .opacity(0.6)
           .maxLines(1)

@@ -146,26 +146,33 @@ export struct RoomPage {
   }
 
   /**
-   * 发送状态图标
+   * 发送状态图标 - 更醒目的设计
    */
   @Builder
   sendStateIcon(state: SendState) {
     if (state === 'sending') {
-      // 发送中 - 时钟图标
-      Text('⏳')
-        .fontSize(10)
-        .fontColor('#CCCCCC')
-        .margin({ left: 4 })
+      // 发送中 - 明显的时钟图标 + 灰色
+      Row() {
+        LoadingProgress()
+          .width(12)
+          .height(12)
+          .color('#FFFFFF')
+      }
+      .width(16)
+      .height(16)
+      .margin({ left: 4 })
     } else if (state === 'sent') {
-      // 已发送 - 单勾
+      // 已发送 - 明显的单勾 + 白色
       Text('✓')
-        .fontSize(10)
-        .fontColor('#CCCCCC')
+        .fontSize(14)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#FFFFFF')
         .margin({ left: 4 })
     } else if (state === 'failed') {
-      // 发送失败 - 红色感叹号
-      Text('✗')
-        .fontSize(10)
+      // 发送失败 - 明显的红色感叹号
+      Text('!')
+        .fontSize(14)
+        .fontWeight(FontWeight.Bold)
         .fontColor('#FF5252')
         .margin({ left: 4 })
     }
@@ -195,14 +202,17 @@ export struct RoomPage {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-        // 测试按钮 - 手动触发分页
-        Button('加载更多')
-          .fontSize(12)
-          .height(32)
-          .backgroundColor('#E0E0E0')
-          .fontColor('#333333')
+        // 测试按钮 - 手动触发分页（醒目设计）
+        Button('⚡加载更多')
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .height(36)
+          .backgroundColor(this.hasMoreMessages ? '#2196F3' : '#E0E0E0')
+          .fontColor(this.hasMoreMessages ? '#FFFFFF' : '#999999')
+          .borderRadius(8)
           .enabled(!this.isLoadingMore && this.hasMoreMessages)
           .onClick(() => {
+            hilog.info(DOMAIN, TAG, 'User clicked load more button');
             this.loadMoreMessages();
           })
       }

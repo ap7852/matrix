@@ -237,11 +237,13 @@ fn room_to_summary(room: matrix_sdk_ui::room_list_service::RoomListItem) -> Room
 
     // RoomListItem derefs to Room，可调用 encryption_state()
     use matrix_sdk::EncryptionState;
-    let is_encrypted = match room.encryption_state() {
+    let encryption_state = room.encryption_state();
+    let is_encrypted = match encryption_state {
         EncryptionState::Encrypted => true,
         EncryptionState::NotEncrypted => false,
         EncryptionState::Unknown => false,  // 未知时暂定为未加密
     };
+    debug!("Room {} encryption state: {:?}, is_encrypted={}", room.room_id(), encryption_state, is_encrypted);
 
     // 获取最新消息内容
     // TODO: LatestEvent 内容提取需要更复杂的逻辑
