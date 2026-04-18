@@ -811,12 +811,23 @@ dependencies = [
 
 [[package]]
 name = "eyeball-im"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1c02432230060cae0621e15803e073976d22974e0f013c9cb28a4ea1b484629"
+dependencies = [
+ "futures-core",
+ "imbl 3.0.0",
+ "tokio",
+]
+
+[[package]]
+name = "eyeball-im"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4790c03df183c2b46665c1a58118c04fd3e3976ec2fe16a0aa00e00c9eea7754"
 dependencies = [
  "futures-core",
- "imbl",
+ "imbl 6.1.0",
  "tokio",
  "tracing",
 ]
@@ -828,9 +839,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "809fa2e8e59c25a41f5b2440aa937f1e84df6ae48b707e65f69ce259b1c44bda"
 dependencies = [
  "arrayvec",
- "eyeball-im",
+ "eyeball-im 0.8.0",
  "futures-core",
- "imbl",
+ "imbl 6.1.0",
  "pin-project-lite",
  "smallvec",
 ]
@@ -1474,6 +1485,19 @@ dependencies = [
 
 [[package]]
 name = "imbl"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc3be8d8cd36f33a46b1849f31f837c44d9fa87223baee3b4bd96b8f11df81eb"
+dependencies = [
+ "bitmaps",
+ "imbl-sized-chunks",
+ "rand_core 0.6.4",
+ "rand_xoshiro 0.6.0",
+ "version_check",
+]
+
+[[package]]
+name = "imbl"
 version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fade8ae6828627ad1fa094a891eccfb25150b383047190a3648d66d06186501"
@@ -1482,7 +1506,7 @@ dependencies = [
  "bitmaps",
  "imbl-sized-chunks",
  "rand_core 0.9.5",
- "rand_xoshiro",
+ "rand_xoshiro 0.7.0",
  "serde",
  "version_check",
 ]
@@ -1678,6 +1702,7 @@ version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "133c182a6a2c87864fe97778797e46c7e999672690dc9fa3ee8e241aa4a9c13f"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -1860,12 +1885,12 @@ dependencies = [
  "cfg-if",
  "event-listener",
  "eyeball",
- "eyeball-im",
+ "eyeball-im 0.8.0",
  "futures-core",
  "futures-util",
  "gloo-timers",
  "http",
- "imbl",
+ "imbl 6.1.0",
  "indexmap",
  "itertools 0.14.0",
  "js_int",
@@ -1909,7 +1934,7 @@ dependencies = [
  "bitflags",
  "decancer",
  "eyeball",
- "eyeball-im",
+ "eyeball-im 0.8.0",
  "futures-util",
  "growable-bloom-filter",
  "matrix-sdk-common",
@@ -1932,12 +1957,12 @@ version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54fae2bdfc3d760d21a84d6d2036b5db5c48d9a3dee3794119e3fb9c4cc4ccc5"
 dependencies = [
- "eyeball-im",
+ "eyeball-im 0.8.0",
  "futures-core",
  "futures-executor",
  "futures-util",
  "gloo-timers",
- "imbl",
+ "imbl 6.1.0",
  "ruma",
  "serde",
  "serde_json",
@@ -2086,13 +2111,13 @@ dependencies = [
  "chrono",
  "emojis",
  "eyeball",
- "eyeball-im",
+ "eyeball-im 0.8.0",
  "eyeball-im-util",
  "futures-core",
  "futures-util",
  "fuzzy-matcher",
  "growable-bloom-filter",
- "imbl",
+ "imbl 6.1.0",
  "indexmap",
  "itertools 0.14.0",
  "matrix-sdk",
@@ -2714,6 +2739,15 @@ dependencies = [
 
 [[package]]
 name = "rand_xoshiro"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f97cdb2a36ed4183de61b2f824cc45c9f1037f28afe0a322e9fff4c108b5aaa"
+dependencies = [
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand_xoshiro"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f703f4665700daf5512dcca5f43afa6af89f09db47fb56be587f80636bda2d41"
@@ -3131,7 +3165,10 @@ name = "sdk-wrapper"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
+ "eyeball-im 0.5.1",
  "futures",
+ "libsqlite3-sys",
  "matrix-sdk",
  "matrix-sdk-ui",
  "ring",
@@ -3140,6 +3177,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

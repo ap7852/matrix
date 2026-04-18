@@ -1,4 +1,8 @@
 //! 会话持久化
+//!
+//! 参考 Element X Android:
+//! - 每个用户有独立的 sessionPath 和 cachePath
+//! - logout 时删除整个 session 目录
 
 use std::path::{Path, PathBuf};
 use matrix_sdk::authentication::matrix::MatrixSession;
@@ -40,17 +44,34 @@ pub async fn load_session(data_dir: &Path) -> Result<Option<SessionData>, Bridge
     Ok(Some(session))
 }
 
-pub async fn delete_session(data_dir: &Path) -> Result<(), BridgeError> {
-    let path = session_file_path(data_dir);
-    if path.exists() {
-        tokio::fs::remove_file(&path).await
-            .map_err(|e| BridgeError::new(ErrorCode::StorageError, e.to_string()))?;
+/// 删除会话
+/// 参考 Element X Android: 删除整个 sessionPath 和 cachePath 目录
+pub async fn delete_session(session: &SessionData) -> Result<(), BridgeError> {
+    // 删除 session 目录（包含 SQLite store）
+    let session_path = PathBuf::from(&session.session_path);
+    if session_path.exists() {
+        tokio::fs::remove_dir_all(&session_path).await
+            .map_err(|e| BridgeError::new(ErrorCode::StorageError,
+                format!("Failed to remove session_path: {}", e)))?;
     }
+
+    // 删除 cache 目录
+    let cache_path = PathBuf::from(&session.cache_path);
+    if cache_path.exists() {
+        tokio::fs::remove_dir_all(&cache_path).await
+            .map_err(|e| BridgeError::new(ErrorCode::StorageError,
+                format!("Failed to remove cache_path: {}", e)))?;
+    }
+
     Ok(())
 }
 
-pub async fn restore_session(session: &SessionData, data_dir: &Path) -> Result<(), BridgeError> {
-    let client = build_client(&session.homeserver_url, data_dir, None).await?;
+/// 恢复会话
+/// 使用 SessionData 中的 session_path 作为 SQLite store 目录
+pub async fn restore_session(session: &SessionData, _data_dir: &Path) -> Result<(), BridgeError> {
+    // 使用 session.session_path 作为 SQLite store 目录
+    let session_path = PathBuf::from(&session.session_path);
+    let client = build_client(&session.homeserver_url, &session_path, None).await?;
 
     // 解析 user_id
     let user_id = session.user_id.parse::<matrix_sdk::ruma::OwnedUserId>()

@@ -11,13 +11,16 @@
 //! 禁止在此层包含任何业务逻辑！
 
 // 增加递归限制，解决 matrix-sdk 编译时的深度限制问题
-#![recursion_limit = "1024"]
+// matrix-sdk 的 async 函数嵌套深度很高，需要较大的限制
+#![recursion_limit = "4096"]
 
 mod runtime;
 mod error;
 mod hello;
 mod auth;
 mod room_list;
+mod timeline;
+mod encryption;
 
 use napi_ohos::bindgen_prelude::*;
 use napi_derive_ohos::napi;
@@ -39,3 +42,9 @@ pub use auth::*;
 
 // 导出房间列表函数
 pub use room_list::*;
+
+// 导出 Timeline 函数
+pub use timeline::*;
+
+// 导出加密同步函数
+pub use encryption::*;

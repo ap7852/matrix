@@ -1,15 +1,33 @@
 /**
  * 房间列表项组件
+ * 使用 @Reusable 实现组件复用，提升滚动性能
  */
 
 import { RoomSummary } from '../../models/RoomModels';
 
+// 导航参数类型
+interface NavParam {
+  roomId: string;
+}
+
+@Reusable
 @Component
 export struct RoomListItem {
-  @Prop room: RoomSummary = {} as RoomSummary;
+  @Prop room: RoomSummary = { roomId: '', name: '', unreadCount: 0, isEncrypted: false };
+  @Consume('navPathStack') navPathStack: NavPathStack;
+
+  /**
+   * 组件复用时的初始化
+   */
+  aboutToReuse(params: ESObject): void {
+    if (params.room) {
+      this.room = params.room as RoomSummary;
+    }
+  }
 
   build() {
     Row() {
+      // Avatar 占位符 - 显示房间名首字母
       Text(this.room.name.charAt(0).toUpperCase())
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
@@ -42,6 +60,7 @@ export struct RoomListItem {
           .fontSize(12)
           .opacity(0.4)
 
+        // 未读消息角标
         if (this.room.unreadCount > 0) {
           Text(this.room.unreadCount.toString())
             .fontSize(12)
@@ -57,5 +76,9 @@ export struct RoomListItem {
     .width('100%')
     .height(72)
     .padding({ left: 16, right: 16 })
+    .onClick(() => {
+      const navParam: NavParam = { roomId: this.room.roomId };
+      this.navPathStack.pushPath({ name: 'RoomPage', param: navParam });
+    })
   }
 }

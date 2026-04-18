@@ -10,6 +10,8 @@ pub enum ErrorCode {
     NetworkError = 1001,
     #[error("服务器错误")]
     ServerError = 1002,
+    #[error("参数无效")]
+    InvalidParameter = 1003,
     #[error("认证失败")]
     AuthenticationFailed = 2001,
     #[error("会话已过期")]
@@ -20,6 +22,8 @@ pub enum ErrorCode {
     RoomNotFound = 3001,
     #[error("未加入房间")]
     RoomNotJoined = 3002,
+    #[error("时间线未初始化")]
+    TimelineNotInitialized = 3003,
     #[error("解密失败")]
     DecryptionFailed = 4001,
     #[error("验证失败")]

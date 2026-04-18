@@ -17,7 +17,13 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 ring = { workspace = true }
 
-# matrix-sdk 已启用（Phase 0 核心登录）
+# matrix-sdk 已启用（Phase 1 SQLite 持久化 ✓）
 matrix-sdk = { workspace = true }
 matrix-sdk-ui = { workspace = true }
+libsqlite3-sys = { workspace = true }
 futures = { workspace = true }
+chrono = { workspace = true }
+eyeball-im = { workspace = true }
+
+# UUID 生成 - 1:1 复刻 Element X Android SessionPathsFactory
+uuid = { version = "1.11", features = ["v4"] }

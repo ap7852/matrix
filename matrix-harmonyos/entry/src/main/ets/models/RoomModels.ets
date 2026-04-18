@@ -13,9 +13,10 @@ export interface RoomSummary {
 }
 
 export interface RoomListDiff {
-  type: 'Insert' | 'Update' | 'Remove' | 'Clear';
+  type: 'reset' | 'insert' | 'update' | 'remove' | 'append';
   index?: number;
-  item?: RoomSummary;
+  items?: RoomSummary[];  // 用于 reset 和 append
+  item?: RoomSummary;     // 用于 insert 和 update
 }
 
 export interface RoomListUpdate {

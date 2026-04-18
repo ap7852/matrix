@@ -1,0 +1,433 @@
+//! Timeline 模块 - 消息时间线实现
+//!
+//! 使用 matrix-sdk-ui 的 Timeline 进行消息管理
+
+use std::sync::Arc;
+
+use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
+use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+use matrix_sdk_ui::eyeball_im::VectorDiff;
+use matrix_sdk_ui::timeline::{
+    EncryptedMessage, EventSendState, EventTimelineItem, MsgLikeKind, RoomExt,
+    TimelineDetails, TimelineItem, TimelineItemContent,
+};
+use serde::{Deserialize, Serialize};
+use tracing::debug;
+
+use crate::client::get_client;
+use crate::error::{BridgeError, ErrorCode};
+
+/// 时间线消息数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineMessage {
+    pub event_id: Option<String>,
+    pub sender_id: String,
+    pub sender_name: String,
+    pub content: MessageContent,
+    pub timestamp: String,
+    pub is_own: bool,
+    pub send_state: SendState,
+}
+
+/// 消息内容类型
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum MessageContent {
+    Text { body: String },
+    Image { mxc_url: String },
+    UnableToDecrypt { reason: String },
+    Redacted,
+    Unsupported,
+}
+
+/// 发送状态
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SendState {
+    Sending,
+    Sent,
+    Failed,
+}
+
+/// 时间线更新消息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum TimelineUpdate {
+    Reset { items: Vec<TimelineMessage> },
+    Append { items: Vec<TimelineMessage> },
+    Insert { index: usize, item: TimelineMessage },
+    Update { index: usize, item: TimelineMessage },
+    Remove { index: usize },
+}
+
+/// 初始化房间 Timeline
+pub async fn init_timeline(room_id: &str) -> Result<(), BridgeError> {
+    let client = get_client()
+        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
+
+    let room_id = OwnedRoomId::try_from(room_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    let room = client.get_room(&room_id)
+        .ok_or_else(|| BridgeError::new(ErrorCode::RoomNotFound, "Room not found"))?;
+
+    debug!("Creating Timeline for room: {}", room_id);
+
+    let _timeline = room.timeline().await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    debug!("Timeline created for room: {}", room_id);
+
+    Ok(())
+}
+
+/// 订阅 Timeline 更新
+pub async fn subscribe_timeline(
+    room_id: &str,
+    update_callback: impl Fn(String) + Send + 'static,
+) -> Result<(), BridgeError> {
+    let client = get_client()
+        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
+
+    let room_id = OwnedRoomId::try_from(room_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    let room = client.get_room(&room_id)
+        .ok_or_else(|| BridgeError::new(ErrorCode::RoomNotFound, "Room not found"))?;
+
+    debug!("Subscribing to Timeline for room: {}", room_id);
+
+    let timeline = room.timeline().await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    let (items, stream) = timeline.subscribe().await;
+
+    // 发送初始消息列表
+    let initial: Vec<TimelineMessage> = items
+        .iter()
+        .filter_map(|item| item.as_event().map(map_event_item))
+        .collect();
+
+    let initial_len = initial.len();
+    if !initial.is_empty() {
+        let update = TimelineUpdate::Reset { items: initial };
+        let json = serde_json::to_string(&update).unwrap_or_default();
+        debug!("Sending initial timeline: {} items", initial_len);
+        update_callback(json);
+    }
+
+    // 监听更新流
+    tokio::spawn(async move {
+        use matrix_sdk::stream::StreamExt;
+        let mut stream = Box::pin(stream);
+
+        while let Some(diffs) = stream.next().await {
+            let converted: Vec<TimelineUpdate> = diffs
+                .into_iter()
+                .flat_map(|diff| convert_timeline_diff(diff))
+                .collect();
+
+            for update in converted {
+                let json = serde_json::to_string(&update).unwrap_or_default();
+                debug!("Sending timeline update");
+                update_callback(json);
+            }
+        }
+
+        debug!("Timeline stream ended for room: {}", room_id);
+    });
+
+    Ok(())
+}
+
+/// 发送文本消息
+pub async fn send_text_message(
+    room_id: &str,
+    text: &str,
+    _reply_to: Option<&str>,
+) -> Result<(), BridgeError> {
+    let client = get_client()
+        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
+
+    let room_id = OwnedRoomId::try_from(room_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    let room = client.get_room(&room_id)
+        .ok_or_else(|| BridgeError::new(ErrorCode::RoomNotFound, "Room not found"))?;
+
+    debug!("Sending text message to room: {}", room_id);
+
+    let content = RoomMessageEventContent::text_plain(text);
+
+    // E2EE 加密在 room.send() 中自动完成
+    room.send(content).await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    debug!("Text message sent");
+    Ok(())
+}
+
+/// 分页加载历史消息
+pub async fn paginate_backwards(room_id: &str) -> Result<bool, BridgeError> {
+    let client = get_client()
+        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
+
+    let room_id = OwnedRoomId::try_from(room_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    let room = client.get_room(&room_id)
+        .ok_or_else(|| BridgeError::new(ErrorCode::RoomNotFound, "Room not found"))?;
+
+    debug!("Paginating backwards for room: {}", room_id);
+
+    let timeline = room.timeline().await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    let more_messages = timeline
+        .paginate_backwards(20)
+        .await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    debug!("Pagination complete, more messages available: {}", more_messages);
+    Ok(more_messages)
+}
+
+/// 发送已读回执
+pub async fn send_read_receipt(room_id: &str, event_id: &str) -> Result<(), BridgeError> {
+    let client = get_client()
+        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
+
+    let room_id = OwnedRoomId::try_from(room_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    let room = client.get_room(&room_id)
+        .ok_or_else(|| BridgeError::new(ErrorCode::RoomNotFound, "Room not found"))?;
+
+    let event_id = OwnedEventId::try_from(event_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    debug!("Sending read receipt for event: {}", event_id);
+
+    room.send_single_receipt(
+        matrix_sdk::ruma::api::client::receipt::create_receipt::v3::ReceiptType::Read,
+        matrix_sdk::ruma::events::receipt::ReceiptThread::Main,
+        event_id,
+    ).await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    debug!("Read receipt sent");
+    Ok(())
+}
+
+/// 将 EventTimelineItem 转换为 TimelineMessage
+fn map_event_item(event_item: &EventTimelineItem) -> TimelineMessage {
+    let timestamp = event_item.timestamp();
+    let timestamp_str = format_timestamp(timestamp);
+
+    // 获取发送者信息
+    let sender_id = event_item.sender().to_string();
+    let sender_name = match event_item.sender_profile() {
+        TimelineDetails::Ready(profile) => {
+            profile.display_name.clone().unwrap_or_else(|| sender_id.clone())
+        }
+        _ => sender_id.clone(),
+    };
+
+    // 解析消息内容
+    let content = parse_content(event_item.content());
+
+    // 解析发送状态
+    let send_state = match event_item.send_state() {
+        Some(state) => {
+            match state {
+                EventSendState::NotSentYet { .. } => SendState::Sending,
+                EventSendState::Sent { .. } => SendState::Sent,
+                EventSendState::SendingFailed { .. } => SendState::Failed,
+            }
+        }
+        None => SendState::Sent,
+    };
+
+    TimelineMessage {
+        event_id: event_item.event_id().map(|id| id.to_string()),
+        sender_id,
+        sender_name,
+        content,
+        timestamp: timestamp_str,
+        is_own: event_item.is_own(),
+        send_state,
+    }
+}
+
+/// 解析 TimelineItemContent
+fn parse_content(content: &TimelineItemContent) -> MessageContent {
+    match content {
+        TimelineItemContent::MsgLike(msg_like) => {
+            match &msg_like.kind {
+                MsgLikeKind::Message(message) => {
+                    use matrix_sdk::ruma::events::room::message::MessageType;
+                    match message.msgtype() {
+                        MessageType::Text(text) => {
+                            MessageContent::Text { body: text.body.clone() }
+                        }
+                        MessageType::Emote(emote) => {
+                            // emote 格式化为 *用户名 内容
+                            MessageContent::Text { body: format!("* {}", emote.body) }
+                        }
+                        MessageType::Notice(notice) => {
+                            MessageContent::Text { body: notice.body.clone() }
+                        }
+                        MessageType::Image(image) => {
+                            // 从 source 获取 URL
+                            use matrix_sdk::ruma::events::room::MediaSource;
+                            let mxc_url = match &image.source {
+                                MediaSource::Plain(uri) => uri.to_string(),
+                                MediaSource::Encrypted(encrypted) => encrypted.url.to_string(),
+                            };
+                            MessageContent::Image { mxc_url }
+                        }
+                        MessageType::Video(video) => {
+                            MessageContent::Text { body: format!("[视频] {}", video.body) }
+                        }
+                        MessageType::File(file) => {
+                            MessageContent::Text { body: format!("[文件] {}", file.body) }
+                        }
+                        MessageType::Audio(audio) => {
+                            MessageContent::Text { body: format!("[音频] {}", audio.body) }
+                        }
+                        MessageType::Location(loc) => {
+                            MessageContent::Text { body: format!("[位置] {}", loc.body) }
+                        }
+                        _ => {
+                            // 对于其他已知类型，尝试获取 body
+                            MessageContent::Text { body: "未知消息类型".to_string() }
+                        }
+                    }
+                }
+                MsgLikeKind::Redacted => MessageContent::Redacted,
+                MsgLikeKind::UnableToDecrypt(encrypted) => {
+                    // 从 EncryptedMessage 获取原因
+                    let reason = match encrypted {
+                        EncryptedMessage::MegolmV1AesSha2 { cause, .. } => {
+                            format!("{:?}", cause)
+                        }
+                        EncryptedMessage::OlmV1Curve25519AesSha2 { .. } => {
+                            "OlmV1".to_string()
+                        }
+                        EncryptedMessage::Unknown => {
+                            "Unknown algorithm".to_string()
+                        }
+                    };
+                    MessageContent::UnableToDecrypt { reason }
+                }
+                MsgLikeKind::Sticker(sticker) => {
+                    MessageContent::Text { body: "[贴纸]".to_string() }
+                }
+                _ => MessageContent::Unsupported,
+            }
+        }
+        TimelineItemContent::ProfileChange(profile) => {
+            MessageContent::Text { body: format!("{} 更新了资料", profile.user_id()) }
+        }
+        TimelineItemContent::MembershipChange(membership) => {
+            MessageContent::Text { body: format!("成员变更: {}", membership.user_id()) }
+        }
+        _ => MessageContent::Unsupported,
+    }
+}
+
+/// 格式化时间戳
+fn format_timestamp(ts: matrix_sdk::ruma::MilliSecondsSinceUnixEpoch) -> String {
+    use chrono::{DateTime, Local, TimeZone};
+
+    let millis: i64 = ts.0.into();
+    let datetime: DateTime<Local> = Local.timestamp_millis_opt(millis).single().unwrap_or_else(|| Local::now());
+
+    let now = Local::now();
+    let diff = now.signed_duration_since(datetime);
+
+    if diff.num_minutes() < 1 {
+        "刚刚".to_string()
+    } else if diff.num_hours() < 1 {
+        format!("{}分钟前", diff.num_minutes())
+    } else if diff.num_days() == 0 {
+        datetime.format("%H:%M").to_string()
+    } else if diff.num_days() < 7 {
+        datetime.format("%a %H:%M").to_string()
+    } else {
+        datetime.format("%m/%d %H:%M").to_string()
+    }
+}
+
+/// 将 VectorDiff<Arc<TimelineItem>> 转换为 TimelineUpdate
+fn convert_timeline_diff(diff: VectorDiff<Arc<TimelineItem>>) -> Vec<TimelineUpdate> {
+    match diff {
+        VectorDiff::Reset { values } => {
+            let items: Vec<TimelineMessage> = values
+                .iter()
+                .filter_map(|item| item.as_event().map(map_event_item))
+                .collect();
+            vec![TimelineUpdate::Reset { items }]
+        }
+        VectorDiff::Append { values } => {
+            let items: Vec<TimelineMessage> = values
+                .iter()
+                .filter_map(|item| item.as_event().map(map_event_item))
+                .collect();
+            vec![TimelineUpdate::Append { items }]
+        }
+        VectorDiff::Insert { index, value } => {
+            if let Some(event_item) = value.as_event() {
+                vec![TimelineUpdate::Insert {
+                    index,
+                    item: map_event_item(event_item),
+                }]
+            } else {
+                vec![]
+            }
+        }
+        VectorDiff::Set { index, value } => {
+            if let Some(event_item) = value.as_event() {
+                vec![TimelineUpdate::Update {
+                    index,
+                    item: map_event_item(event_item),
+                }]
+            } else {
+                vec![]
+            }
+        }
+        VectorDiff::Remove { index } => {
+            vec![TimelineUpdate::Remove { index }]
+        }
+        VectorDiff::Clear { .. } => {
+            vec![TimelineUpdate::Reset { items: vec![] }]
+        }
+        VectorDiff::PushFront { value } => {
+            if let Some(event_item) = value.as_event() {
+                vec![TimelineUpdate::Insert {
+                    index: 0,
+                    item: map_event_item(event_item),
+                }]
+            } else {
+                vec![]
+            }
+        }
+        VectorDiff::PushBack { value } => {
+            if let Some(event_item) = value.as_event() {
+                vec![TimelineUpdate::Append { items: vec![map_event_item(event_item)] }]
+            } else {
+                vec![]
+            }
+        }
+        VectorDiff::PopFront => {
+            vec![TimelineUpdate::Remove { index: 0 }]
+        }
+        VectorDiff::PopBack => {
+            vec![TimelineUpdate::Reset { items: vec![] }]
+        }
+        VectorDiff::Truncate { .. } => {
+            vec![TimelineUpdate::Reset { items: vec![] }]
+        }
+    }
+}

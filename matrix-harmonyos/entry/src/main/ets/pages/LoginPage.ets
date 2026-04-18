@@ -12,7 +12,7 @@ const TAG = 'LoginPage';
 @Entry
 @Component
 export struct LoginPage {
-  @State homeserver: string = 'matrix.org';
+  @State homeserver: string = 'matrix.4d2.org';
   @State username: string = '';
   @State password: string = '';
   @State isLoading: boolean = false;
@@ -54,7 +54,7 @@ export struct LoginPage {
         .fontWeight(FontWeight.Bold)
         .margin({ bottom: 32 })
 
-      TextInput({ placeholder: '服务器地址 (如 matrix.org)', text: this.homeserver })
+      TextInput({ placeholder: '服务器地址 (如 matrix.4d2.org)', text: this.homeserver })
         .onChange((value: string) => this.homeserver = value)
         .width('80%')
         .margin({ bottom: 16 })

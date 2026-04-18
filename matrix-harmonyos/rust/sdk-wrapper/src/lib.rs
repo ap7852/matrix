@@ -4,13 +4,15 @@
 
 // 增加递归限制，解决 matrix-sdk 编译时的深度限制问题
 // matrix-sdk 的 async 函数嵌套深度很高，需要较大的限制
-#![recursion_limit = "1024"]
+#![recursion_limit = "4096"]
 
 pub mod error;
 pub mod client;
 pub mod auth;
 pub mod session;
 pub mod room_list;
+pub mod timeline;
+pub mod encryption;
 
 /// 验证 ring 编译成功
 pub fn verify_ring() -> [u8; 32] {

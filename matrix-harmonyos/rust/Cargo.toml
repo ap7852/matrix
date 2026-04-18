@@ -20,9 +20,14 @@ napi-derive-ohos = "1.1.6"
 
 # === Matrix SDK (严格版本锁定) ===
 # 注意：必须使用 =0.16.0 精确锁定语法，禁止宽松约束
-# Phase 0: 暂时禁用 sqlite（链接问题），Phase 1 将配置 HarmonyOS SQLite
-matrix-sdk = { version = "=0.16.0", default-features = false, features = ["rustls-tls", "e2e-encryption"] }
+# Phase 1: 启用 sqlite 持久化 ✓
+matrix-sdk = { version = "=0.16.0", default-features = false, features = ["rustls-tls", "e2e-encryption", "sqlite"] }
 matrix-sdk-ui = { version = "=0.16.0", default-features = false, features = ["rustls-tls"] }
+
+# === SQLite 静态编译 ✓ ===
+# 使用 0.35 版本匹配 matrix-sdk-sqlite 通过 rusqlite v0.37 的依赖
+# bundled feature 使 SQLite 静态编译，无需 HarmonyOS 系统库
+libsqlite3-sys = { version = "0.35", features = ["bundled"] }
 
 # === 异步运行时 ===
 tokio = { version = "1", features = ["full"] }
@@ -44,6 +49,12 @@ anyhow = "1"
 
 # === Futures ===
 futures = "0.3"
+
+# === 时间处理 ===
+chrono = "0.4"
+
+# === eyeball-im (matrix-sdk-ui 依赖) ===
+eyeball-im = "0.5"
 
 # === 编译配置 ===
 # 增加代码生成单元，帮助解决 matrix-sdk 的编译深度问题

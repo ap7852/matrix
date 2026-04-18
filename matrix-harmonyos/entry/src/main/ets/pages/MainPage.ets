@@ -6,6 +6,7 @@ import { initMatrixBridge, isBridgeReady, getInitError } from '../services/Matri
 import { AuthService } from '../services/AuthService';
 import { LoginPage } from './LoginPage';
 import { RoomListPage } from './RoomListPage';
+import { RoomPage } from './RoomPage';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
 
@@ -52,6 +53,15 @@ struct MainPage {
       this.initErrorMessage = getInitError() ?? '初始化失败';
       hilog.error(DOMAIN, TAG, 'Bridge init failed: %{public}s', this.initErrorMessage);
     }
+  }
+
+  @Builder
+  roomPageBuilder(name: string, param: ESObject) {
+    NavDestination() {
+      RoomPage({ roomId: param.roomId as string })
+    }
+    .title(param.roomName as string ?? '聊天')
+    .hideTitleBar(true)
   }
 
   build() {
@@ -101,5 +111,6 @@ struct MainPage {
       }
     }
     .mode(NavigationMode.Stack)
+    .navDestination(this.roomPageBuilder)
   }
 }
