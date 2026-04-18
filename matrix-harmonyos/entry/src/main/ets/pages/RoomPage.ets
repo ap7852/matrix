@@ -3,7 +3,7 @@
  */
 
 import { TimelineService } from '../services/TimelineService';
-import { TimelineMessage, MessageContent } from '../models/TimelineModels';
+import { TimelineMessage, MessageContent, SendState } from '../models/TimelineModels';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const DOMAIN = 0x0003;
@@ -145,6 +145,32 @@ export struct RoomPage {
     }
   }
 
+  /**
+   * 发送状态图标
+   */
+  @Builder
+  sendStateIcon(state: SendState) {
+    if (state === 'sending') {
+      // 发送中 - 时钟图标
+      Text('⏳')
+        .fontSize(10)
+        .fontColor('#CCCCCC')
+        .margin({ left: 4 })
+    } else if (state === 'sent') {
+      // 已发送 - 单勾
+      Text('✓')
+        .fontSize(10)
+        .fontColor('#CCCCCC')
+        .margin({ left: 4 })
+    } else if (state === 'failed') {
+      // 发送失败 - 红色感叹号
+      Text('✗')
+        .fontSize(10)
+        .fontColor('#FF5252')
+        .margin({ left: 4 })
+    }
+  }
+
   build() {
     Column() {
       // 顶部 Header
@@ -224,15 +250,20 @@ export struct RoomPage {
                   // 自己的消息 - 右侧
                   Column() {
                     this.messageContentBuilder(message)
-                    Text(message.timestamp)
-                      .fontSize(10)
-                      .fontColor('#CCCCCC')
-                      .margin({ top: 4 })
+                    Row() {
+                      Text(message.timestamp)
+                        .fontSize(10)
+                        .fontColor('#CCCCCC')
+                      // 发送状态图标
+                      this.sendStateIcon(message.sendState)
+                    }
+                    .margin({ top: 4 })
                   }
-                  .backgroundColor('#2196F3')
+                  .backgroundColor(message.sendState === 'failed' ? '#FFEBEE' : '#2196F3')
                   .borderRadius(12)
                   .padding({ left: 12, right: 12, top: 8, bottom: 8 })
                   .alignItems(HorizontalAlign.End)
+                  .opacity(message.sendState === 'sending' ? 0.7 : 1)
                 } else {
                   // 他人的消息 - 左侧
                   Column() {

@@ -40,11 +40,20 @@ export struct RoomListItem {
         .fontColor('#666666')
 
       Column() {
-        Text(this.room.name)
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Row() {
+          Text(this.room.name)
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+
+          // 加密指示器
+          if (this.room.isEncrypted) {
+            Text('🔒')
+              .fontSize(12)
+              .margin({ left: 4 })
+          }
+        }
 
         Text(this.room.lastMessage ?? '')
           .fontSize(14)

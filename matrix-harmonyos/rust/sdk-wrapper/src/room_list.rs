@@ -218,18 +218,31 @@ fn room_to_summary(room: matrix_sdk_ui::room_list_service::RoomListItem) -> Room
         // 最后 fallback: 使用 room_id
         .unwrap_or_else(|| room.room_id().to_string());
 
+    // RoomListItem derefs to Room，可调用 encryption_state()
+    use matrix_sdk::EncryptionState;
+    let is_encrypted = match room.encryption_state() {
+        EncryptionState::Encrypted => true,
+        EncryptionState::NotEncrypted => false,
+        EncryptionState::Unknown => false,  // 未知时暂定为未加密
+    };
+
+    // 获取最新消息内容
+    // TODO: LatestEvent 内容提取需要更复杂的逻辑
+    // 暂时返回 None，由 Timeline 显示完整消息
+    let last_message = None;
+
     RoomSummary {
         room_id: room.room_id().to_string(),
         name,
         avatar_url: room.avatar_url().map(|u| u.to_string()),
-        last_message: None,
+        last_message,
         timestamp: room.new_latest_event_timestamp()
             .map(|ts| {
                 let millis: i64 = ts.0.into();
                 format_timestamp(millis)
             }),
         unread_count: room.num_unread_notifications() as u32,
-        is_encrypted: false,
+        is_encrypted,
     }
 }
 
