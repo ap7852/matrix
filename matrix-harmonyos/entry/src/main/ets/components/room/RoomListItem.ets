@@ -21,9 +21,6 @@ export struct RoomListItem {
   @Prop room: RoomSummary = { roomId: '', name: '', unreadCount: 0, isEncrypted: false };
   @Consume('navPathStack') navPathStack: NavPathStack;
 
-  /**
-   * 组件复用时的初始化
-   */
   aboutToReuse(params: ESObject): void {
     if (params.room) {
       this.room = params.room as RoomSummary;
@@ -31,9 +28,6 @@ export struct RoomListItem {
   }
 
   build() {
-    // 日志输出房间信息，便于调试
-    hilog.debug(DOMAIN, TAG, 'Room: %{public}s, encrypted=%{public}s', this.room.name, this.room.isEncrypted.toString());
-
     Row() {
       // Avatar 占位符 - 显示房间名首字母
       Text(this.room.name.charAt(0).toUpperCase())

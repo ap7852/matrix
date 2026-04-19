@@ -126,17 +126,33 @@ export class RoomListService {
         break;
       case 'append':
         if (diff.items) {
-          RoomListService.rooms = RoomListService.rooms.concat(diff.items);
+          // 过滤掉已存在的房间
+          const newItems = diff.items.filter(item =>
+            !RoomListService.rooms.some(r => r.roomId === item.roomId)
+          );
+          RoomListService.rooms = RoomListService.rooms.concat(newItems);
         }
         break;
       case 'insert':
         if (diff.index !== undefined && diff.item) {
-          RoomListService.rooms.splice(diff.index, 0, diff.item);
+          // 检查是否已存在，存在则更新
+          const existingIndex = RoomListService.rooms.findIndex(r => r.roomId === diff.item!.roomId);
+          if (existingIndex >= 0) {
+            RoomListService.rooms[existingIndex] = diff.item;
+          } else {
+            RoomListService.rooms.splice(diff.index, 0, diff.item);
+          }
         }
         break;
       case 'update':
         if (diff.index !== undefined && diff.item) {
-          RoomListService.rooms[diff.index] = diff.item;
+          // 优先按 room_id 查找更新
+          const existingIndex = RoomListService.rooms.findIndex(r => r.roomId === diff.item!.roomId);
+          if (existingIndex >= 0) {
+            RoomListService.rooms[existingIndex] = diff.item;
+          } else {
+            RoomListService.rooms[diff.index] = diff.item;
+          }
         }
         break;
       case 'remove':

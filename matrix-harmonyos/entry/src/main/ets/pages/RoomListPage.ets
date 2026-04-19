@@ -18,11 +18,18 @@ export struct RoomListPage {
   @State sessionInfo: string = '';
   @State isLoading: boolean = true;
   @State isEmpty: boolean = false;
+  @State @Watch('onRoomsChanged') rooms: RoomSummary[] = [];  // 添加 @State 和 @Watch 触发 UI 刷新
 
   @Consume('navPathStack') navPathStack: NavPathStack;
   @Consume('isAuthenticated') isAuthenticated: boolean;
 
   private dataSource: RoomDataSource = new RoomDataSource();
+
+  onRoomsChanged(): void {
+    this.dataSource.updateRooms(this.rooms);
+    this.isLoading = false;
+    this.isEmpty = this.rooms.length === 0;
+  }
 
   async aboutToAppear(): Promise<void> {
     const session = AuthService.getSession();
@@ -34,14 +41,8 @@ export struct RoomListPage {
     await RoomListService.init();
 
     // 订阅房间列表更新
-    RoomListService.subscribe((update) => {
-      hilog.info(DOMAIN, TAG, 'Room list update: %{public}d diffs, type: %{public}s', update.diffs.length, update.diffs[0]?.type ?? 'unknown');
-      const rooms = RoomListService.getRooms();
-      hilog.info(DOMAIN, TAG, 'Rooms count: %{public}d', rooms.length);
-      this.dataSource.updateRooms(rooms);
-      this.isLoading = false;
-      this.isEmpty = rooms.length === 0;
-      hilog.info(DOMAIN, TAG, 'isLoading: %{public}s, isEmpty: %{public}s', this.isLoading.toString(), this.isEmpty.toString());
+    RoomListService.subscribe(() => {
+      this.rooms = RoomListService.getRooms();
     });
   }
 
@@ -95,7 +96,7 @@ export struct RoomListPage {
             ListItem() {
               RoomListItem({ room: room })
             }
-          }, (room: RoomSummary) => room.roomId)
+          }, (room: RoomSummary) => `${room.roomId}_${room.name}`)  // key包含name，name变化时重新渲染
         }
         .width('100%')
         .layoutWeight(1)

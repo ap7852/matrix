@@ -95,10 +95,13 @@ pub async fn start_room_list_sync(
         let (stream, controller) = room_list.entries_with_dynamic_adapters(page_size);
         let sync_stream = service_for_spawn.sync();
 
-        // 设置空过滤器（显示所有房间）- 这会触发初始 reset
-        controller.set_filter(Box::new(|_| true));
-
         debug!("Filter set, stream should start yielding diffs");
+
+        // 使用 SDK 提供的过滤器排除 spaces（空间房间）
+        use matrix_sdk_ui::room_list_service::filters;
+        controller.set_filter(Box::new(
+            filters::new_filter_not(Box::new(filters::new_filter_space()))
+        ));
 
         // 使用 Box::pin 来 pin stream
         let mut sync_stream = Box::pin(sync_stream);
@@ -109,15 +112,13 @@ pub async fn start_room_list_sync(
                 // 处理房间列表更新
                 Some(diffs) = stream.next() => {
                     debug!("Received {} diffs from room list stream", diffs.len());
-                    let converted_diffs: Vec<RoomListDiff> = diffs
-                        .into_iter()
-                        .flat_map(convert_vector_diff)
-                        .collect();
+
+                    // 异步处理每个 diff
+                    let converted_diffs = convert_diffs_async(diffs).await;
 
                     if !converted_diffs.is_empty() {
                         let update = RoomListUpdate { diffs: converted_diffs };
                         let json = serde_json::to_string(&update).unwrap_or_default();
-                        debug!("Sending room list update: {} diffs", update.diffs.len());
                         update_callback(json);
                     }
                 }
@@ -144,117 +145,161 @@ pub async fn start_room_list_sync(
     Ok(())
 }
 
-/// 将 VectorDiff<RoomListItem> 转换为 RoomListDiff
-fn convert_vector_diff(diff: VectorDiff<matrix_sdk_ui::room_list_service::RoomListItem>) -> Vec<RoomListDiff> {
-    match diff {
-        VectorDiff::Reset { values } => {
-            debug!("VectorDiff::Reset with {} items", values.len());
-            let items: Vec<RoomSummary> = values
-                .into_iter()
-                .map(room_to_summary)
-                .collect();
-            debug!("Converted to {} RoomSummary items", items.len());
-            vec![RoomListDiff::Reset { items }]
+/// 异步处理多个 VectorDiff，转换为 RoomListDiff
+async fn convert_diffs_async(diffs: Vec<VectorDiff<matrix_sdk_ui::room_list_service::RoomListItem>>) -> Vec<RoomListDiff> {
+    let mut result = Vec::with_capacity(diffs.len());
+
+    for diff in diffs {
+        match diff {
+            VectorDiff::Reset { values } => {
+                debug!("VectorDiff::Reset with {} items", values.len());
+                // 异步处理每个房间
+                let mut items = Vec::with_capacity(values.len());
+                for room in values {
+                    items.push(room_to_summary_async(room).await);
+                }
+                debug!("Converted to {} RoomSummary items", items.len());
+                result.push(RoomListDiff::Reset { items });
+            }
+            VectorDiff::Append { values } => {
+                let mut items = Vec::with_capacity(values.len());
+                for room in values {
+                    items.push(room_to_summary_async(room).await);
+                }
+                result.push(RoomListDiff::Append { items });
+            }
+            VectorDiff::Insert { index, value } => {
+                result.push(RoomListDiff::Insert {
+                    index,
+                    item: room_to_summary_async(value).await,
+                });
+            }
+            VectorDiff::Set { index, value } => {
+                result.push(RoomListDiff::Update {
+                    index,
+                    item: room_to_summary_async(value).await,
+                });
+            }
+            VectorDiff::Remove { index } => {
+                result.push(RoomListDiff::Remove { index });
+            }
+            VectorDiff::Clear { .. } => {
+                result.push(RoomListDiff::Reset { items: vec![] });
+            }
+            VectorDiff::PushFront { value } => {
+                result.push(RoomListDiff::Insert {
+                    index: 0,
+                    item: room_to_summary_async(value).await,
+                });
+            }
+            VectorDiff::PushBack { .. } => {
+                // 无法获取确切位置，发送 Reset（需要重新获取所有房间）
+                // 这里暂时跳过，因为 Sliding Sync 通常不会产生此 diff
+                debug!("VectorDiff::PushBack received, skipping");
+            }
+            VectorDiff::PopFront => {
+                result.push(RoomListDiff::Remove { index: 0 });
+            }
+            VectorDiff::PopBack => {
+                debug!("VectorDiff::PopBack received, skipping");
+            }
+            VectorDiff::Truncate { .. } => {
+                debug!("VectorDiff::Truncate received, sending empty reset");
+                result.push(RoomListDiff::Reset { items: vec![] });
+            }
         }
-        VectorDiff::Append { values } => {
-            let items: Vec<RoomSummary> = values
-                .into_iter()
-                .map(room_to_summary)
-                .collect();
-            vec![RoomListDiff::Append { items }]
+    }
+
+    result
+}
+
+/// 将 RoomListItem 转换为 RoomSummary (异步版本)
+/// 使用 display_name().await 强制计算房间名称
+async fn room_to_summary_async(room: matrix_sdk_ui::room_list_service::RoomListItem) -> RoomSummary {
+    let room_id = room.room_id().to_string();
+
+    // 1. 首先尝试 room.name()（群房间的 m.room.name 事件）
+    if let Some(name) = room.name() {
+        if !name.is_empty() && !name.starts_with('!') {
+            return build_room_summary(room, name);
         }
-        VectorDiff::Insert { index, value } => {
-            vec![RoomListDiff::Insert {
-                index,
-                item: room_to_summary(value),
-            }]
+    }
+
+    // 2. 尝试 canonical_alias（房间别名，如 #room:server）
+    if let Some(alias) = room.canonical_alias() {
+        let alias_str = alias.to_string();
+        if !alias_str.is_empty() && !alias_str.starts_with('!') {
+            return build_room_summary(room, alias_str);
         }
-        VectorDiff::Set { index, value } => {
-            vec![RoomListDiff::Update {
-                index,
-                item: room_to_summary(value),
-            }]
+    }
+
+    // 3. 尝试从 heroes 和 direct_targets 获取名称（DM 房间）
+    let heroes_name = extract_name_from_heroes(&room);
+    if !heroes_name.is_empty() && !heroes_name.starts_with('!') && heroes_name != "Unknown Room" {
+        return build_room_summary(room, heroes_name);
+    }
+
+    // 4. 尝试 SDK 的 display_name（计算名称）
+    let cached_name = room.cached_display_name();
+    let sdk_name = if let Some(n) = cached_name {
+        n.to_string()
+    } else {
+        match room.display_name().await {
+            Ok(display_name) => display_name.to_string(),
+            Err(_) => String::new(),
         }
-        VectorDiff::Remove { index } => {
-            vec![RoomListDiff::Remove { index }]
+    };
+
+    // 检查 SDK 名称是否有效
+    if !sdk_name.is_empty() && !sdk_name.starts_with('!') && sdk_name != "Empty Room" {
+        return build_room_summary(room, sdk_name);
+    }
+
+    // 5. 尝试 alt_aliases
+    if let Some(alias) = room.alt_aliases().first() {
+        let alias_str = alias.to_string();
+        if !alias_str.starts_with('!') {
+            return build_room_summary(room, alias_str);
         }
-        VectorDiff::Clear { .. } => {
-            vec![RoomListDiff::Reset { items: vec![] }]
-        }
-        VectorDiff::PushFront { value } => {
-            vec![RoomListDiff::Insert {
-                index: 0,
-                item: room_to_summary(value),
-            }]
-        }
-        VectorDiff::PushBack { .. } => {
-            // 无法获取确切位置，发送 Reset
-            vec![RoomListDiff::Reset { items: vec![] }]
-        }
-        VectorDiff::PopFront => {
-            vec![RoomListDiff::Remove { index: 0 }]
-        }
-        VectorDiff::PopBack => {
-            vec![RoomListDiff::Reset { items: vec![] }]
-        }
-        VectorDiff::Truncate { .. } => {
-            vec![RoomListDiff::Reset { items: vec![] }]
-        }
+    }
+
+    // 6. 最后兜底：简化 room_id（去掉 ! 和 server 部分）
+    let fallback = simplify_room_id(&room_id);
+    build_room_summary(room, fallback)
+}
+
+/// 简化 room_id：去掉 ! 和 server 部分
+fn simplify_room_id(room_id: &str) -> String {
+    if room_id.starts_with('!') {
+        // !roomid:server -> roomid
+        room_id.split(':')
+            .next()
+            .unwrap_or(room_id)
+            .trim_start_matches('!')
+            .to_string()
+    } else {
+        room_id.to_string()
     }
 }
 
-/// 将 RoomListItem 转换为 RoomSummary
-/// 1:1 复刻 Element X Android RoomInfoMapper:
-/// - displayName 优先使用 cached_display_name
-/// - fallback 到 name 或 canonical_alias
-fn room_to_summary(room: matrix_sdk_ui::room_list_service::RoomListItem) -> RoomSummary {
-    // 获取房间名称，优先级：
-    // 1. cached_display_name (计算后的显示名)
-    // 2. name() (m.room.name 事件)
-    // 3. canonical_alias (规范化别名)
-    // 4. alt_aliases (备用别名)
-    // 5. room_id (最后 fallback)
-    let name = room.cached_display_name()
-        .map(|n| n.to_string())
-        .or_else(|| room.name())
-        .or_else(|| room.canonical_alias().map(|a| a.to_string()))
-        .or_else(|| {
-            // 尝试备用别名
-            room.alt_aliases()
-                .first()
-                .map(|a| a.to_string())
-        })
-        .unwrap_or_else(|| {
-            // 最后使用 room_id，但尝试简化显示
-            let id = room.room_id().to_string();
-            // 提取本地部分（去掉服务器名）
-            if id.contains(':') {
-                id.split(':').next().unwrap_or(&id).to_string()
-            } else {
-                id
-            }
-        });
-
-    // RoomListItem derefs to Room，可调用 encryption_state()
+/// 构建 RoomSummary（确保名称不以 ! 开头）
+fn build_room_summary(room: matrix_sdk_ui::room_list_service::RoomListItem, name: String) -> RoomSummary {
     use matrix_sdk::EncryptionState;
     let encryption_state = room.encryption_state();
-    let is_encrypted = match encryption_state {
-        EncryptionState::Encrypted => true,
-        EncryptionState::NotEncrypted => false,
-        EncryptionState::Unknown => false,  // 未知时暂定为未加密
-    };
-    debug!("Room {} encryption state: {:?}, is_encrypted={}", room.room_id(), encryption_state, is_encrypted);
+    let is_encrypted = matches!(encryption_state, EncryptionState::Encrypted);
 
-    // 获取最新消息内容
-    // TODO: LatestEvent 内容提取需要更复杂的逻辑
-    // 暂时返回 None，由 Timeline 显示完整消息
-    let last_message = None;
+    // 最终过滤：如果名称以 ! 开头，去掉 ! 和 :server 部分
+    let final_name = if name.starts_with('!') {
+        simplify_room_id(&name)
+    } else {
+        name
+    };
 
     RoomSummary {
         room_id: room.room_id().to_string(),
-        name,
+        name: final_name,
         avatar_url: room.avatar_url().map(|u| u.to_string()),
-        last_message,
+        last_message: None,
         timestamp: room.new_latest_event_timestamp()
             .map(|ts| {
                 let millis: i64 = ts.0.into();
@@ -263,6 +308,58 @@ fn room_to_summary(room: matrix_sdk_ui::room_list_service::RoomListItem) -> Room
         unread_count: room.num_unread_notifications() as u32,
         is_encrypted,
     }
+}
+
+/// 房间名称 fallback：当 display_name() 失败时使用
+fn fallback_room_name(room: &matrix_sdk_ui::room_list_service::RoomListItem) -> String {
+    // 尝试多种来源获取名称
+    room.name()
+        .or_else(|| room.canonical_alias().map(|a| a.to_string()))
+        .or_else(|| {
+            room.alt_aliases()
+                .first()
+                .map(|a| a.to_string())
+        })
+        .unwrap_or_else(|| {
+            // 使用更友好的名称
+            "Unknown Room".to_string()
+        })
+}
+
+/// 从 heroes 提取房间名称（用于 DM 房间）
+fn extract_name_from_heroes(room: &matrix_sdk_ui::room_list_service::RoomListItem) -> String {
+    // 尝试从 heroes 获取名称
+    let heroes = room.heroes();
+    if !heroes.is_empty() {
+        // 对于 DM 房间，heroes[0] 是对方用户
+        let hero = &heroes[0];
+        if let Some(display_name) = &hero.display_name {
+            return display_name.clone();
+        }
+        // 如果 hero 没有 display_name，使用 user_id 的本地部分
+        let user_id = hero.user_id.to_string();
+        if user_id.starts_with('@') {
+            return user_id.split(':').next().unwrap_or(&user_id)
+                .trim_start_matches('@')
+                .to_string();
+        }
+        return user_id;
+    }
+
+    // 尝试 direct_targets（DM 房间的对方用户）
+    let targets = room.direct_targets();
+    if !targets.is_empty() {
+        let target_id = targets.iter().next().unwrap().to_string();
+        if target_id.starts_with('@') {
+            return target_id.split(':').next().unwrap_or(&target_id)
+                .trim_start_matches('@')
+                .to_string();
+        }
+        return target_id;
+    }
+
+    // 最后返回一个默认名称
+    "Unknown Room".to_string()
 }
 
 /// 格式化时间戳为可读字符串
