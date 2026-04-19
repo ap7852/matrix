@@ -27,3 +27,9 @@ eyeball-im = { workspace = true }
 
 # UUID 生成 - 1:1 复刻 Element X Android SessionPathsFactory
 uuid = { version = "1.11", features = ["v4"] }
+
+# Base64 编解码
+base64 = "0.22"
+
+# MIME 类型
+mime = "0.3"

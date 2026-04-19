@@ -3,7 +3,12 @@
  */
 
 import { TimelineService } from '../services/TimelineService';
-import { TimelineMessage, MessageContent, SendState } from '../models/TimelineModels';
+import { MediaService } from '../services/MediaService';
+import { TimelineMessage, MessageContent, SendState, ImageContent } from '../models/TimelineModels';
+import { ImageMessage } from '../components/timeline/ImageMessage';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { fileIo } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const DOMAIN = 0x0003;
@@ -29,6 +34,7 @@ export struct RoomPage {
   @State hasMessages: boolean = false; // 用于强制触发 UI 刷新
   @State isLoadingMore: boolean = false; // 加载历史消息状态
   @State hasMoreMessages: boolean = true; // 是否还有更多历史消息
+  @State isPickingImage: boolean = false; // 选择图片状态
 
   @Consume('navPathStack') navPathStack: NavPathStack;
 
@@ -118,6 +124,76 @@ export struct RoomPage {
   }
 
   /**
+   * 选择图片并发送
+   */
+  async pickAndSendImage(): Promise<void> {
+    if (this.isPickingImage) {
+      return;
+    }
+
+    this.isPickingImage = true;
+    hilog.info(DOMAIN, TAG, 'Picking image for room: %{public}s', this.roomId);
+
+    try {
+      // 使用 PhotoAccessHelper 选择图片
+      const photoPicker = new photoAccessHelper.PhotoViewPicker();
+      const result = await photoPicker.select({
+        MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE,
+        maxSelectNumber: 1
+      });
+
+      if (result.photoUris.length === 0) {
+        hilog.info(DOMAIN, TAG, 'No image selected');
+        this.isPickingImage = false;
+        return;
+      }
+
+      const imageUri = result.photoUris[0];
+      hilog.info(DOMAIN, TAG, 'Image selected: %{public}s', imageUri);
+
+      // 打开文件并读取内容
+      const file = fileIo.openSync(imageUri, fileIo.OpenMode.READ_ONLY);
+      const stat = fileIo.statSync(file.fd);
+      const fileSize = stat.size;
+      hilog.info(DOMAIN, TAG, 'Image file size: %{public}d bytes', fileSize);
+
+      // 读取文件内容到 ArrayBuffer
+      const buffer = new ArrayBuffer(fileSize);
+      fileIo.readSync(file.fd, buffer);
+      fileIo.closeSync(file.fd);
+
+      // 转换为 Base64
+      const base64Data = await this.arrayBufferToBase64(buffer);
+      hilog.info(DOMAIN, TAG, 'Image converted to Base64, length: %{public}d', base64Data.length);
+
+      // 发送图片
+      const filename = `image_${Date.now()}.jpg`;
+      const mimetype = 'image/jpeg';
+      await MediaService.sendImage(this.roomId, filename, mimetype, base64Data);
+
+      hilog.info(DOMAIN, TAG, 'Image sent successfully');
+    } catch (err) {
+      const error = err as Error;
+      hilog.error(DOMAIN, TAG, 'Pick/send image failed: %{public}s', error.message);
+    }
+
+    this.isPickingImage = false;
+  }
+
+  /**
+   * ArrayBuffer 转 Base64
+   */
+  async arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
+    const bytes = new Uint8Array(buffer);
+    // 使用 util.Base64Helper 编码 (异步)
+    const base64Helper = new util.Base64Helper();
+    const encodedBytes = await base64Helper.encode(bytes);
+    // 转换 Uint8Array 结果为 string
+    const decoder = new util.TextDecoder('utf-8');
+    return decoder.decodeToString(encodedBytes);
+  }
+
+  /**
    * 渲染消息内容
    */
   @Builder
@@ -127,9 +203,8 @@ export struct RoomPage {
         .fontSize(14)
         .fontColor(message.isOwn ? '#FFFFFF' : '#333333')
     } else if (message.content.type === 'image') {
-      Text('[图片]')
-        .fontSize(14)
-        .fontColor(message.isOwn ? '#FFFFFF' : '#666666')
+      // 使用 ImageMessage 组件显示图片
+      ImageMessage({ content: message.content })
     } else if (message.content.type === 'unableToDecrypt') {
       Text('[无法解密]')
         .fontSize(14)
@@ -333,27 +408,31 @@ export struct RoomPage {
         .layoutWeight(1)
         .backgroundColor('#FFFFFF')
         .edgeEffect(EdgeEffect.Spring)
-        .onReachEdge((edge: Edge) => {
-          // 当滚动到顶部时加载更多消息
-          hilog.info(DOMAIN, TAG, 'onReachEdge triggered: edge=%{public}d', edge);
-          if (edge === Edge.Top && !this.isLoadingMore && this.hasMoreMessages) {
-            this.loadMoreMessages();
-          }
-        })
-        // 添加边缘检测阈值，更早触发
-        .onScroll((scrollOffset: number, scrollState: ScrollState) => {
-          // 当滚动位置接近顶部时也触发加载
-          if (scrollOffset < 50 && scrollState === ScrollState.ScrollingUp) {
-            if (!this.isLoadingMore && this.hasMoreMessages) {
-              hilog.info(DOMAIN, TAG, 'Near top, triggering load more');
-              this.loadMoreMessages();
-            }
-          }
-        })
       }
 
       // 底部 MessageComposer - 输入框和发送按钮
       Row() {
+        // 图片选择按钮
+        Button({ type: ButtonType.Circle }) {
+          if (this.isPickingImage) {
+            LoadingProgress()
+              .width(20)
+              .height(20)
+              .color('#2196F3')
+          } else {
+            Text('📷')
+              .fontSize(18)
+          }
+        }
+        .width(40)
+        .height(40)
+        .backgroundColor('#F5F5F5')
+        .margin({ right: 4 })
+        .enabled(!this.isPickingImage)
+        .onClick(() => {
+          this.pickAndSendImage();
+        })
+
         TextInput({ placeholder: '输入消息...', text: this.inputText })
           .layoutWeight(1)
           .height(40)

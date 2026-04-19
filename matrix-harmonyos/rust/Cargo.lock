@@ -3165,12 +3165,14 @@ name = "sdk-wrapper"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "chrono",
  "eyeball-im 0.5.1",
  "futures",
  "libsqlite3-sys",
  "matrix-sdk",
  "matrix-sdk-ui",
+ "mime",
  "ring",
  "serde",
  "serde_json",

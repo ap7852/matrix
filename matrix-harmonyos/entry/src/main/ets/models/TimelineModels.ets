@@ -25,9 +25,26 @@ export interface TextContent {
   body: string;
 }
 
+/**
+ * 加密文件元数据 (用于 E2EE 图片)
+ */
+export interface EncryptedFileData {
+  key: string;
+  iv: string;
+  hashes?: string;
+}
+
 export interface ImageContent {
   type: 'image';
   mxcUrl: string;
+  encryptedFile?: EncryptedFileData;
+  body: string;
+  filename?: string;
+  width?: number;
+  height?: number;
+  mimetype?: string;
+  thumbnailUrl?: string;
+  localPath?: string;  // 用于发送本地图片 (上传前)
 }
 
 export interface UnableToDecryptContent {

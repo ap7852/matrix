@@ -36,12 +36,30 @@ pub struct TimelineMessage {
     pub send_state: SendState,
 }
 
+/// 加密文件元数据 (用于 E2EE 图片)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncryptedFileData {
+    pub key: String,
+    pub iv: String,
+    pub hashes: Option<String>,
+}
+
 /// 消息内容类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum MessageContent {
     Text { body: String },
-    Image { mxc_url: String },
+    Image {
+        mxc_url: String,
+        encrypted_file: Option<EncryptedFileData>,
+        body: String,
+        filename: Option<String>,
+        width: Option<u64>,
+        height: Option<u64>,
+        mimetype: Option<String>,
+        thumbnail_url: Option<String>,
+    },
     UnableToDecrypt { reason: String },
     Redacted,
     Unsupported,
@@ -306,13 +324,42 @@ fn parse_content(content: &TimelineItemContent) -> MessageContent {
                             MessageContent::Text { body: notice.body.clone() }
                         }
                         MessageType::Image(image) => {
-                            // 从 source 获取 URL
+                            // 从 source 获取 URL 和加密信息
                             use matrix_sdk::ruma::events::room::MediaSource;
-                            let mxc_url = match &image.source {
-                                MediaSource::Plain(uri) => uri.to_string(),
-                                MediaSource::Encrypted(encrypted) => encrypted.url.to_string(),
+                            let (mxc_url, encrypted_file) = match &image.source {
+                                MediaSource::Plain(uri) => (uri.to_string(), None),
+                                MediaSource::Encrypted(encrypted) => {
+                                    (
+                                        encrypted.url.to_string(),
+                                        Some(EncryptedFileData {
+                                            key: encrypted.key.k.to_string(),
+                                            iv: encrypted.iv.to_string(),
+                                            hashes: encrypted.hashes.get("sha256")
+                                                .map(|h| h.to_string()),
+                                        }),
+                                    )
+                                }
                             };
-                            MessageContent::Image { mxc_url }
+
+                            // 获取缩略图 URL
+                            let thumbnail_url = image.info.as_ref().and_then(|i| {
+                                match &i.thumbnail_source {
+                                    Some(MediaSource::Plain(uri)) => Some(uri.to_string()),
+                                    Some(MediaSource::Encrypted(e)) => Some(e.url.to_string()),
+                                    None => None,
+                                }
+                            });
+
+                            MessageContent::Image {
+                                mxc_url,
+                                encrypted_file,
+                                body: image.body.clone(),
+                                filename: image.filename.clone(),
+                                width: image.info.as_ref().and_then(|i| i.width.map(|w| u64::from(w))),
+                                height: image.info.as_ref().and_then(|i| i.height.map(|h| u64::from(h))),
+                                mimetype: image.info.as_ref().and_then(|i| i.mimetype.clone()),
+                                thumbnail_url,
+                            }
                         }
                         MessageType::Video(video) => {
                             MessageContent::Text { body: format!("[视频] {}", video.body) }

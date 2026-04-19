@@ -21,6 +21,7 @@ mod auth;
 mod room_list;
 mod timeline;
 mod encryption;
+mod media;
 
 use napi_ohos::bindgen_prelude::*;
 use napi_derive_ohos::napi;
@@ -48,3 +49,6 @@ pub use timeline::*;
 
 // 导出加密同步函数
 pub use encryption::*;
+
+// 导出媒体函数
+pub use media::*;
