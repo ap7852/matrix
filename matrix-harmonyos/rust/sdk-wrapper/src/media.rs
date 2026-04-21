@@ -7,11 +7,15 @@ use matrix_sdk::ruma::{OwnedMxcUri, OwnedRoomId};
 use matrix_sdk::ruma::events::room::{MediaSource, EncryptedFile, EncryptedFileInit, JsonWebKey, JsonWebKeyInit};
 use matrix_sdk::ruma::serde::Base64;
 use matrix_sdk::attachment::{AttachmentConfig, AttachmentInfo, BaseImageInfo};
-use tracing::debug;
+use tracing::{debug, info, warn, error};
+use std::time::Duration;
 
 use crate::client::get_client;
 use crate::error::{BridgeError, ErrorCode};
 use crate::timeline::EncryptedFileData;
+
+/// 下载超时时间 (30秒)
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 下载媒体文件并返回 Base64 编码数据
 ///
@@ -23,21 +27,35 @@ pub async fn download_media(
     let client = get_client()
         .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
 
-    debug!("Downloading media from: {}", mxc_url);
+    info!("download_media START: mxc_url={}", mxc_url);
 
     // 解析 MXC URI
+    info!("download_media: parsing MXC URI");
     let mxc_uri: OwnedMxcUri = OwnedMxcUri::try_from(mxc_url.as_str())
-        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, format!("Invalid MXC URI: {}", e)))?;
+        .map_err(|e| {
+            warn!("download_media: MXC URI parse failed: {}", e);
+            BridgeError::new(ErrorCode::InvalidParameter, format!("Invalid MXC URI: {}", e))
+        })?;
+
+    info!("download_media: building media request");
 
     // 构建媒体请求参数
+    info!("download_media: encrypted_file={:?}", encrypted_file.is_some());
     let media_request = if let Some(encrypted) = encrypted_file {
         // 加密媒体 - 构建 EncryptedFile
+        info!("download_media: building encrypted file request");
         // 解析 Base64 参数
         let key = Base64::parse(&encrypted.key)
-            .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, format!("Invalid key: {}", e)))?;
+            .map_err(|e| {
+                warn!("download_media: key parse failed: {}", e);
+                BridgeError::new(ErrorCode::InvalidParameter, format!("Invalid key: {}", e))
+            })?;
 
         let iv = Base64::parse(&encrypted.iv)
-            .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, format!("Invalid iv: {}", e)))?;
+            .map_err(|e| {
+                warn!("download_media: iv parse failed: {}", e);
+                BridgeError::new(ErrorCode::InvalidParameter, format!("Invalid iv: {}", e))
+            })?;
 
         // 构建 hashes
         let hashes = if let Some(hash) = encrypted.hashes {
@@ -45,7 +63,10 @@ pub async fn download_media(
             map.insert(
                 "sha256".to_string(),
                 Base64::parse(&hash)
-                    .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, format!("Invalid hash: {}", e)))?,
+                    .map_err(|e| {
+                        warn!("download_media: hash parse failed: {}", e);
+                        BridgeError::new(ErrorCode::InvalidParameter, format!("Invalid hash: {}", e))
+                    })?,
             );
             map
         } else {
@@ -69,29 +90,41 @@ pub async fn download_media(
             v: "v2".to_owned(),
         });
 
+        info!("download_media: encrypted file structure built");
         matrix_sdk::media::MediaRequestParameters {
             source: MediaSource::Encrypted(Box::new(encrypted_file)),
             format: matrix_sdk::media::MediaFormat::File,
         }
     } else {
         // 普通媒体
+        info!("download_media: building plain media request");
         matrix_sdk::media::MediaRequestParameters {
             source: MediaSource::Plain(mxc_uri),
             format: matrix_sdk::media::MediaFormat::File,
         }
     };
 
-    // 下载媒体
+    // 下载媒体 - 使用超时包装
+    info!("download_media: calling get_media_content");
     let media = client.media();
-    let data = media.get_media_content(&media_request, true).await
+    let download_result = tokio::time::timeout(DOWNLOAD_TIMEOUT, media.get_media_content(&media_request, true)).await;
+
+    info!("download_media: get_media_content returned");
+
+    let data = download_result
+        .map_err(|_| {
+            error!("download_media: TIMEOUT after {}s", DOWNLOAD_TIMEOUT.as_secs());
+            BridgeError::new(ErrorCode::MediaDownloadFailed, "Download timeout")
+        })?
         .map_err(|e| {
-            debug!("Media download failed: {}", e);
+            error!("download_media: download failed: {}", e);
             BridgeError::new(ErrorCode::MediaDownloadFailed, e.to_string())
         })?;
 
     // 转换为 Base64
+    info!("download_media: encoding to base64");
     let base64_data = STANDARD.encode(&data);
-    debug!("Media downloaded, size: {} bytes, base64 length: {}", data.len(), base64_data.len());
+    info!("download_media SUCCESS: size={} bytes, base64_len={}", data.len(), base64_data.len());
 
     Ok(base64_data)
 }
