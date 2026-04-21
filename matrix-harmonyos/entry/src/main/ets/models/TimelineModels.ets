@@ -16,6 +16,17 @@ export interface TimelineMessage {
   timestamp: string;
   isOwn: boolean;
   sendState: SendState;
+  inReplyTo?: ReplyPreview;
+}
+
+/**
+ * 回复引用预览
+ */
+export interface ReplyPreview {
+  eventId: string;
+  senderId: string;
+  senderName?: string;
+  contentBody: string;
 }
 
 /**

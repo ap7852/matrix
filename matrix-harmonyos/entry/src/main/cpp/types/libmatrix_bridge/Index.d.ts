@@ -51,6 +51,13 @@ export interface MatrixBridge {
   napiInitSyncService(): Promise<void>;
   napiStartSync(): Promise<void>;
   napiStopSync(): Promise<void>;
+
+  // === 账户函数 ===
+  napiGetProfile(): Promise<string>;
+  napiSetDisplayName(name: string): Promise<void>;
+  napiSetAvatarUrl(url: string): Promise<void>;
+  napiGetDevices(): Promise<string>;
+  napiDeleteDevice(deviceId: string): Promise<void>;
 }
 
 declare const matrixBridge: MatrixBridge;

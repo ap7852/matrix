@@ -15,6 +15,7 @@ pub mod room;
 pub mod timeline;
 pub mod encryption;
 pub mod media;
+pub mod account;
 
 /// 验证 ring 编译成功
 pub fn verify_ring() -> [u8; 32] {

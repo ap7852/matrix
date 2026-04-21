@@ -6,7 +6,7 @@ import { TimelineService } from '../services/TimelineService';
 import { MediaService } from '../services/MediaService';
 import { AvatarService } from '../services/AvatarService';
 import { RoomService } from '../services/RoomService';
-import { TimelineMessage, MessageContent, SendState, ImageContent } from '../models/TimelineModels';
+import { TimelineMessage, MessageContent, SendState, ImageContent, ReplyPreview } from '../models/TimelineModels';
 import { ImageMessage } from '../components/timeline/ImageMessage';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { fileIo } from '@kit.CoreFileKit';
@@ -303,6 +303,39 @@ export struct RoomPage {
   }
 
   /**
+   * 回复引用预览
+   */
+  @Builder
+  replyPreviewBuilder(reply: ReplyPreview, isOwn: boolean) {
+    Row() {
+      // 引用线
+      Column()
+        .width(2)
+        .height(40)
+        .backgroundColor(isOwn ? '#FFFFFF' : '#2196F3')
+        .margin({ right: 8 })
+
+      Column() {
+        Text(reply.senderName || reply.senderId)
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(isOwn ? '#FFFFFF' : '#2196F3')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(reply.contentBody)
+          .fontSize(12)
+          .opacity(0.7)
+          .fontColor(isOwn ? '#FFFFFF' : '#666666')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .padding({ bottom: 8 })
+  }
+
+  /**
    * 渲染消息内容
    */
   @Builder
@@ -377,9 +410,38 @@ export struct RoomPage {
       .borderRadius(8)
       .padding(12)
     } else if (message.content.type === 'unableToDecrypt') {
-      Text('[无法解密]')
-        .fontSize(14)
-        .fontColor('#FF5252')
+      // 解密失败 - 显示详细提示和操作按钮
+      Column() {
+        Row() {
+          Text('🔒')
+            .fontSize(20)
+          Text('无法解密此消息')
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#FF5252')
+            .margin({ left: 8 })
+        }
+        Text(message.content.reason || '发送者的设备尚未验证，或密钥尚未同步')
+          .fontSize(12)
+          .opacity(0.7)
+          .fontColor('#FF5252')
+          .margin({ top: 4 })
+        Button('请求重发密钥')
+          .fontSize(12)
+          .height(28)
+          .backgroundColor('#FF5252')
+          .fontColor('#FFFFFF')
+          .margin({ top: 8 })
+          .onClick(() => {
+            hilog.info(DOMAIN, TAG, 'Request key resend for: %{public}s', message.eventId ?? '');
+            // TODO: 实现密钥重发请求
+          })
+      }
+      .width(200)
+      .padding(12)
+      .backgroundColor('#FFEBEE')
+      .borderRadius(8)
+      .alignItems(HorizontalAlign.Start)
     } else if (message.content.type === 'redacted') {
       Text('[消息已删除]')
         .fontSize(14)
@@ -841,6 +903,10 @@ export struct RoomPage {
                 if (message.isOwn) {
                   // 自己的消息 - 右侧
                   Column() {
+                    // 回复引用预览
+                    if (message.inReplyTo) {
+                      this.replyPreviewBuilder(message.inReplyTo, true)
+                    }
                     this.messageContentBuilder(message)
                     Row() {
                       Text(message.timestamp)
@@ -864,6 +930,10 @@ export struct RoomPage {
                       .fontSize(12)
                       .fontColor('#666666')
                       .margin({ bottom: 4 })
+                    // 回复引用预览
+                    if (message.inReplyTo) {
+                      this.replyPreviewBuilder(message.inReplyTo, false)
+                    }
                     this.messageContentBuilder(message)
                     Text(message.timestamp)
                       .fontSize(10)

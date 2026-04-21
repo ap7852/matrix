@@ -36,6 +36,17 @@ pub struct TimelineMessage {
     pub timestamp: String,
     pub is_own: bool,
     pub send_state: SendState,
+    pub in_reply_to: Option<ReplyPreview>,
+}
+
+/// 回复引用预览
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplyPreview {
+    pub event_id: String,
+    pub sender_id: String,
+    pub sender_name: Option<String>,
+    pub content_body: String,
 }
 
 /// 加密文件元数据 (用于 E2EE 图片)
@@ -436,6 +447,9 @@ fn map_event_item(event_item: &EventTimelineItem) -> TimelineMessage {
         None => SendState::Sent,
     };
 
+    // 提取回复引用信息
+    let in_reply_to = extract_reply_preview(event_item);
+
     TimelineMessage {
         event_id: event_item.event_id().map(|id| id.to_string()),
         sender_id,
@@ -445,6 +459,70 @@ fn map_event_item(event_item: &EventTimelineItem) -> TimelineMessage {
         timestamp: timestamp_str,
         is_own: event_item.is_own(),
         send_state,
+        in_reply_to,
+    }
+}
+
+/// 提取回复引用预览
+fn extract_reply_preview(event_item: &EventTimelineItem) -> Option<ReplyPreview> {
+    // 从 content 中获取 in_reply_to
+    match event_item.content() {
+        TimelineItemContent::MsgLike(msg_like) => {
+            // 检查是否有回复关系 - in_reply_to 是字段
+            if let Some(reply) = msg_like.in_reply_to.as_ref() {
+                let event_id = reply.event_id.to_string();
+
+                // 从 event 字段获取详细信息
+                match &reply.event {
+                    TimelineDetails::Ready(embedded_event) => {
+                        let sender_id = embedded_event.sender.to_string();
+                        let sender_name = match &embedded_event.sender_profile {
+                            TimelineDetails::Ready(profile) => profile.display_name.clone(),
+                            _ => None,
+                        };
+
+                        // 获取内容预览 - content 是字段
+                        let content_body = match &embedded_event.content {
+                            TimelineItemContent::MsgLike(inner_msg) => {
+                                match &inner_msg.kind {
+                                    MsgLikeKind::Message(message) => {
+                                        match message.msgtype() {
+                                            matrix_sdk::ruma::events::room::message::MessageType::Text(t) => t.body.clone(),
+                                            matrix_sdk::ruma::events::room::message::MessageType::Image(i) => format!("📷 {}", i.body),
+                                            matrix_sdk::ruma::events::room::message::MessageType::Video(v) => format!("🎬 {}", v.body),
+                                            matrix_sdk::ruma::events::room::message::MessageType::File(f) => format!("📎 {}", f.body),
+                                            matrix_sdk::ruma::events::room::message::MessageType::Audio(a) => format!("🎵 {}", a.body),
+                                            _ => "消息".to_string(),
+                                        }
+                                    }
+                                    _ => "消息".to_string(),
+                                }
+                            }
+                            _ => "消息".to_string(),
+                        };
+
+                        Some(ReplyPreview {
+                            event_id,
+                            sender_id,
+                            sender_name,
+                            content_body,
+                        })
+                    }
+                    // 如果 event 未准备好，使用基本信息
+                    _ => {
+                        Some(ReplyPreview {
+                            event_id,
+                            sender_id: "未知".to_string(),
+                            sender_name: None,
+                            content_body: "消息".to_string(),
+                        })
+                    }
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 

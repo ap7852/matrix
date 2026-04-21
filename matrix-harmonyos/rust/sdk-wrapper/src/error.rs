@@ -38,6 +38,8 @@ pub enum ErrorCode {
     MediaDownloadFailed = 6001,
     #[error("文件过大")]
     MediaTooLarge = 6002,
+    #[error("功能未实现")]
+    NotImplemented = 7001,
     #[error("未知错误")]
     UnknownError = 9999,
 }

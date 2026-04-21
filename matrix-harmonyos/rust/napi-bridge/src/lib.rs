@@ -23,6 +23,7 @@ mod room;
 mod timeline;
 mod encryption;
 mod media;
+mod account;
 
 use napi_ohos::bindgen_prelude::*;
 use napi_derive_ohos::napi;
@@ -56,3 +57,6 @@ pub use encryption::*;
 
 // 导出媒体函数
 pub use media::*;
+
+// 导出账户函数
+pub use account::*;
