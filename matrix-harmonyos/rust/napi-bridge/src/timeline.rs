@@ -114,3 +114,67 @@ pub async fn napi_send_read_receipt(room_id: String, event_id: String) -> Result
         .await
         .map_err(|e| Error::from_reason(e.to_string()))?
 }
+
+/// 编辑消息
+///
+/// 编辑自己发送的消息内容
+#[napi]
+pub async fn napi_edit_message(room_id: String, event_id: String, new_text: String) -> Result<()> {
+    get_runtime()
+        .spawn(async move {
+            sdk_wrapper::timeline::edit_message(&room_id, &event_id, &new_text)
+                .await
+                .map_err(|e| Error::from_reason(e.to_json()))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| Error::from_reason(e.to_string()))?
+}
+
+/// 删除消息 (Redact)
+///
+/// 删除消息，可选提供原因
+#[napi]
+pub async fn napi_redact_message(room_id: String, event_id: String, reason: Option<String>) -> Result<()> {
+    get_runtime()
+        .spawn(async move {
+            sdk_wrapper::timeline::redact_message(&room_id, &event_id, reason.as_deref())
+                .await
+                .map_err(|e| Error::from_reason(e.to_json()))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| Error::from_reason(e.to_string()))?
+}
+
+/// 回复消息
+///
+/// 回复指定的消息
+#[napi]
+pub async fn napi_reply_to_message(room_id: String, event_id: String, text: String) -> Result<()> {
+    get_runtime()
+        .spawn(async move {
+            sdk_wrapper::timeline::reply_to_message(&room_id, &event_id, &text)
+                .await
+                .map_err(|e| Error::from_reason(e.to_json()))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| Error::from_reason(e.to_string()))?
+}
+
+/// 添加/移除表情反应
+///
+/// 切换对消息的表情反应
+#[napi]
+pub async fn napi_toggle_reaction(room_id: String, event_id: String, key: String) -> Result<()> {
+    get_runtime()
+        .spawn(async move {
+            sdk_wrapper::timeline::toggle_reaction(&room_id, &event_id, &key)
+                .await
+                .map_err(|e| Error::from_reason(e.to_json()))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| Error::from_reason(e.to_string()))?
+}

@@ -7,6 +7,7 @@ import { AuthService } from '../services/AuthService';
 import { LoginPage } from './LoginPage';
 import { RoomListPage } from './RoomListPage';
 import { RoomPage } from './RoomPage';
+import { RoomMembersPage } from './RoomMembersPage';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
 
@@ -56,12 +57,20 @@ struct MainPage {
   }
 
   @Builder
-  roomPageBuilder(name: string, param: ESObject) {
-    NavDestination() {
-      RoomPage({ roomId: param.roomId as string })
+  pageBuilder(name: string, param: ESObject) {
+    if (name === 'RoomPage') {
+      NavDestination() {
+        RoomPage({ roomId: param.roomId as string })
+      }
+      .title(param.roomName as string ?? '聊天')
+      .hideTitleBar(true)
+    } else if (name === 'RoomMembersPage') {
+      NavDestination() {
+        RoomMembersPage({ roomId: param.roomId as string })
+      }
+      .title('房间成员')
+      .hideTitleBar(true)
     }
-    .title(param.roomName as string ?? '聊天')
-    .hideTitleBar(true)
   }
 
   build() {
@@ -111,6 +120,6 @@ struct MainPage {
       }
     }
     .mode(NavigationMode.Stack)
-    .navDestination(this.roomPageBuilder)
+    .navDestination(this.pageBuilder)
   }
 }

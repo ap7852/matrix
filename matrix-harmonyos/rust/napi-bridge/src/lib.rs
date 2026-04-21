@@ -12,13 +12,14 @@
 
 // 增加递归限制，解决 matrix-sdk 编译时的深度限制问题
 // matrix-sdk 的 async 函数嵌套深度很高，需要较大的限制
-#![recursion_limit = "4096"]
+#![recursion_limit = "8192"]
 
 mod runtime;
 mod error;
 mod hello;
 mod auth;
 mod room_list;
+mod room;
 mod timeline;
 mod encryption;
 mod media;
@@ -43,6 +44,9 @@ pub use auth::*;
 
 // 导出房间列表函数
 pub use room_list::*;
+
+// 导出房间函数
+pub use room::*;
 
 // 导出 Timeline 函数
 pub use timeline::*;

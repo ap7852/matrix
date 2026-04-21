@@ -6,11 +6,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
 use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
-use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+use matrix_sdk::ruma::events::room::message::{RoomMessageEventContent, RoomMessageEventContentWithoutRelation};
+use matrix_sdk::room::edit::EditedContent;
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
     EncryptedMessage, EventSendState, EventTimelineItem, MsgLikeKind, RoomExt,
-    TimelineDetails, TimelineItem, TimelineItemContent, Timeline,
+    TimelineDetails, TimelineItem, TimelineItemContent, TimelineEventItemId, Timeline,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -30,6 +31,7 @@ pub struct TimelineMessage {
     pub event_id: Option<String>,
     pub sender_id: String,
     pub sender_name: String,
+    pub sender_avatar_url: Option<String>,
     pub content: MessageContent,
     pub timestamp: String,
     pub is_own: bool,
@@ -59,6 +61,33 @@ pub enum MessageContent {
         height: Option<u64>,
         mimetype: Option<String>,
         thumbnail_url: Option<String>,
+    },
+    Video {
+        mxc_url: String,
+        encrypted_file: Option<EncryptedFileData>,
+        body: String,
+        filename: Option<String>,
+        width: Option<u64>,
+        height: Option<u64>,
+        duration: Option<u64>,
+        mimetype: Option<String>,
+        thumbnail_url: Option<String>,
+    },
+    File {
+        mxc_url: String,
+        encrypted_file: Option<EncryptedFileData>,
+        body: String,
+        filename: Option<String>,
+        mimetype: Option<String>,
+        size: Option<u64>,
+    },
+    Audio {
+        mxc_url: String,
+        encrypted_file: Option<EncryptedFileData>,
+        body: String,
+        filename: Option<String>,
+        duration: Option<u64>,
+        mimetype: Option<String>,
     },
     UnableToDecrypt { reason: String },
     Redacted,
@@ -265,6 +294,117 @@ pub async fn send_read_receipt(room_id: &str, event_id: &str) -> Result<(), Brid
     Ok(())
 }
 
+/// 编辑消息
+pub async fn edit_message(
+    room_id: &str,
+    event_id: &str,
+    new_text: &str,
+) -> Result<(), BridgeError> {
+    let client = get_client()
+        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
+
+    let room_id = OwnedRoomId::try_from(room_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    let event_id = OwnedEventId::try_from(event_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    debug!("Editing message {} in room {}", event_id, room_id);
+
+    // 使用 Timeline 编辑
+    let timeline = get_timeline(room_id.as_str()).await?;
+    let item_id = TimelineEventItemId::EventId(event_id);
+    let content = EditedContent::RoomMessage(RoomMessageEventContentWithoutRelation::text_plain(new_text));
+    timeline.edit(&item_id, content).await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    debug!("Message edited");
+    Ok(())
+}
+
+/// 删除消息 (Redact)
+pub async fn redact_message(
+    room_id: &str,
+    event_id: &str,
+    reason: Option<&str>,
+) -> Result<(), BridgeError> {
+    let client = get_client()
+        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
+
+    let room_id = OwnedRoomId::try_from(room_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    let event_id = OwnedEventId::try_from(event_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    debug!("Redacting message {} in room {}", event_id, room_id);
+
+    // 使用 Timeline 删除
+    let timeline = get_timeline(room_id.as_str()).await?;
+    let item_id = TimelineEventItemId::EventId(event_id);
+    timeline.redact(&item_id, reason).await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    debug!("Message redacted");
+    Ok(())
+}
+
+/// 回复消息
+pub async fn reply_to_message(
+    room_id: &str,
+    event_id: &str,
+    text: &str,
+) -> Result<(), BridgeError> {
+    let client = get_client()
+        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
+
+    let room_id = OwnedRoomId::try_from(room_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    let event_id = OwnedEventId::try_from(event_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    debug!("Replying to message {} in room {}", event_id, room_id);
+
+    // 使用 Timeline 回复
+    let timeline = get_timeline(room_id.as_str()).await?;
+
+    // 构造回复内容
+    let content = RoomMessageEventContentWithoutRelation::text_plain(text);
+    timeline.send_reply(content, event_id).await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    debug!("Reply sent");
+    Ok(())
+}
+
+/// 添加/移除表情反应
+pub async fn toggle_reaction(
+    room_id: &str,
+    event_id: &str,
+    key: &str,
+) -> Result<(), BridgeError> {
+    let client = get_client()
+        .ok_or_else(|| BridgeError::new(ErrorCode::SessionExpired, "No client session"))?;
+
+    let room_id = OwnedRoomId::try_from(room_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    let event_id = OwnedEventId::try_from(event_id)
+        .map_err(|e| BridgeError::new(ErrorCode::InvalidParameter, e.to_string()))?;
+
+    debug!("Toggling reaction {} on message {} in room {}", key, event_id, room_id);
+
+    // 使用 Timeline 反应
+    let timeline = get_timeline(room_id.as_str()).await?;
+    let item_id = TimelineEventItemId::EventId(event_id);
+    timeline.toggle_reaction(&item_id, key).await
+        .map_err(|e| BridgeError::new(ErrorCode::NetworkError, e.to_string()))?;
+
+    debug!("Reaction toggled");
+    Ok(())
+}
+
 /// 将 EventTimelineItem 转换为 TimelineMessage
 fn map_event_item(event_item: &EventTimelineItem) -> TimelineMessage {
     let timestamp = event_item.timestamp();
@@ -272,11 +412,13 @@ fn map_event_item(event_item: &EventTimelineItem) -> TimelineMessage {
 
     // 获取发送者信息
     let sender_id = event_item.sender().to_string();
-    let sender_name = match event_item.sender_profile() {
+    let (sender_name, sender_avatar_url) = match event_item.sender_profile() {
         TimelineDetails::Ready(profile) => {
-            profile.display_name.clone().unwrap_or_else(|| sender_id.clone())
+            let name = profile.display_name.clone().unwrap_or_else(|| sender_id.clone());
+            let avatar = profile.avatar_url.clone().map(|u| u.to_string());
+            (name, avatar)
         }
-        _ => sender_id.clone(),
+        _ => (sender_id.clone(), None),
     };
 
     // 解析消息内容
@@ -298,6 +440,7 @@ fn map_event_item(event_item: &EventTimelineItem) -> TimelineMessage {
         event_id: event_item.event_id().map(|id| id.to_string()),
         sender_id,
         sender_name,
+        sender_avatar_url,
         content,
         timestamp: timestamp_str,
         is_own: event_item.is_own(),
@@ -362,13 +505,93 @@ fn parse_content(content: &TimelineItemContent) -> MessageContent {
                             }
                         }
                         MessageType::Video(video) => {
-                            MessageContent::Text { body: format!("[视频] {}", video.body) }
+                            use matrix_sdk::ruma::events::room::MediaSource;
+                            let (mxc_url, encrypted_file) = match &video.source {
+                                MediaSource::Plain(uri) => (uri.to_string(), None),
+                                MediaSource::Encrypted(encrypted) => {
+                                    (
+                                        encrypted.url.to_string(),
+                                        Some(EncryptedFileData {
+                                            key: encrypted.key.k.to_string(),
+                                            iv: encrypted.iv.to_string(),
+                                            hashes: encrypted.hashes.get("sha256")
+                                                .map(|h| h.to_string()),
+                                        }),
+                                    )
+                                }
+                            };
+
+                            let thumbnail_url = video.info.as_ref().and_then(|i| {
+                                match &i.thumbnail_source {
+                                    Some(MediaSource::Plain(uri)) => Some(uri.to_string()),
+                                    Some(MediaSource::Encrypted(e)) => Some(e.url.to_string()),
+                                    None => None,
+                                }
+                            });
+
+                            MessageContent::Video {
+                                mxc_url,
+                                encrypted_file,
+                                body: video.body.clone(),
+                                filename: video.filename.clone(),
+                                width: video.info.as_ref().and_then(|i| i.width.map(|w| u64::from(w))),
+                                height: video.info.as_ref().and_then(|i| i.height.map(|h| u64::from(h))),
+                                duration: video.info.as_ref().and_then(|i| i.duration.map(|d| d.as_millis() as u64)),
+                                mimetype: video.info.as_ref().and_then(|i| i.mimetype.clone()),
+                                thumbnail_url,
+                            }
                         }
                         MessageType::File(file) => {
-                            MessageContent::Text { body: format!("[文件] {}", file.body) }
+                            use matrix_sdk::ruma::events::room::MediaSource;
+                            let (mxc_url, encrypted_file) = match &file.source {
+                                MediaSource::Plain(uri) => (uri.to_string(), None),
+                                MediaSource::Encrypted(encrypted) => {
+                                    (
+                                        encrypted.url.to_string(),
+                                        Some(EncryptedFileData {
+                                            key: encrypted.key.k.to_string(),
+                                            iv: encrypted.iv.to_string(),
+                                            hashes: encrypted.hashes.get("sha256")
+                                                .map(|h| h.to_string()),
+                                        }),
+                                    )
+                                }
+                            };
+
+                            MessageContent::File {
+                                mxc_url,
+                                encrypted_file,
+                                body: file.body.clone(),
+                                filename: file.filename.clone(),
+                                mimetype: file.info.as_ref().and_then(|i| i.mimetype.clone()),
+                                size: file.info.as_ref().and_then(|i| i.size.map(|s| u64::from(s))),
+                            }
                         }
                         MessageType::Audio(audio) => {
-                            MessageContent::Text { body: format!("[音频] {}", audio.body) }
+                            use matrix_sdk::ruma::events::room::MediaSource;
+                            let (mxc_url, encrypted_file) = match &audio.source {
+                                MediaSource::Plain(uri) => (uri.to_string(), None),
+                                MediaSource::Encrypted(encrypted) => {
+                                    (
+                                        encrypted.url.to_string(),
+                                        Some(EncryptedFileData {
+                                            key: encrypted.key.k.to_string(),
+                                            iv: encrypted.iv.to_string(),
+                                            hashes: encrypted.hashes.get("sha256")
+                                                .map(|h| h.to_string()),
+                                        }),
+                                    )
+                                }
+                            };
+
+                            MessageContent::Audio {
+                                mxc_url,
+                                encrypted_file,
+                                body: audio.body.clone(),
+                                filename: audio.filename.clone(),
+                                duration: audio.info.as_ref().and_then(|i| i.duration.map(|d| d.as_millis() as u64)),
+                                mimetype: audio.info.as_ref().and_then(|i| i.mimetype.clone()),
+                            }
                         }
                         MessageType::Location(loc) => {
                             MessageContent::Text { body: format!("[位置] {}", loc.body) }

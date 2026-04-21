@@ -135,6 +135,66 @@ export class TimelineService {
   }
 
   /**
+   * 编辑消息
+   */
+  static async editMessage(roomId: string, eventId: string, newText: string): Promise<void> {
+    try {
+      const bridge = getBridge();
+      await bridge.napiEditMessage(roomId, eventId, newText);
+      hilog.info(DOMAIN, TAG, 'Message edited: %{public}s', eventId);
+    } catch (err) {
+      const error = err as Error;
+      hilog.error(DOMAIN, TAG, 'Edit message failed: %{public}s', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 删除消息 (Redact)
+   */
+  static async redactMessage(roomId: string, eventId: string, reason?: string): Promise<void> {
+    try {
+      const bridge = getBridge();
+      await bridge.napiRedactMessage(roomId, eventId, reason ?? null);
+      hilog.info(DOMAIN, TAG, 'Message redacted: %{public}s', eventId);
+    } catch (err) {
+      const error = err as Error;
+      hilog.error(DOMAIN, TAG, 'Redact message failed: %{public}s', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 回复消息
+   */
+  static async replyToMessage(roomId: string, eventId: string, text: string): Promise<void> {
+    try {
+      const bridge = getBridge();
+      await bridge.napiReplyToMessage(roomId, eventId, text);
+      hilog.info(DOMAIN, TAG, 'Reply sent to: %{public}s', eventId);
+    } catch (err) {
+      const error = err as Error;
+      hilog.error(DOMAIN, TAG, 'Reply failed: %{public}s', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 添加/移除表情反应
+   */
+  static async toggleReaction(roomId: string, eventId: string, key: string): Promise<void> {
+    try {
+      const bridge = getBridge();
+      await bridge.napiToggleReaction(roomId, eventId, key);
+      hilog.info(DOMAIN, TAG, 'Reaction toggled: %{public}s on %{public}s', key, eventId);
+    } catch (err) {
+      const error = err as Error;
+      hilog.error(DOMAIN, TAG, 'Toggle reaction failed: %{public}s', error.message);
+      throw error;
+    }
+  }
+
+  /**
    * 获取房间的消息列表
    */
   static getMessages(roomId: string): TimelineMessage[] {

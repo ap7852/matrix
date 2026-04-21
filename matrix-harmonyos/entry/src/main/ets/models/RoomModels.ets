@@ -22,3 +22,19 @@ export interface RoomListDiff {
 export interface RoomListUpdate {
   diffs: RoomListDiff[];
 }
+
+export interface RoomMember {
+  userId: string;
+  displayName?: string;
+  avatarUrl?: string;
+  membership: string;
+  isOwn: boolean;
+}
+
+export interface RoomDetails {
+  roomId: string;
+  name: string;
+  avatarUrl?: string;
+  isEncrypted: boolean;
+  isDirect: boolean;
+}

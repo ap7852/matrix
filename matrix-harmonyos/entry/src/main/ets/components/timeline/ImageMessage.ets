@@ -88,10 +88,10 @@ export struct ImageMessage {
           .objectFit(ImageFit.Contain)
           .borderRadius(8)
       } else if (this.imageBase64) {
-        // 远程图片 - 使用 Base64
+        // 远程图片 - 使用 Base64，限制显示尺寸
         Image(`data:${this.content.mimetype ?? 'image/jpeg'};base64,${this.imageBase64}`)
-          .width(this.content.width ?? 200)
-          .height(this.content.height ?? 150)
+          .width(Math.min(this.content.width ?? 200, 300))
+          .height(Math.min(this.content.height ?? 150, 225))
           .objectFit(ImageFit.Contain)
           .borderRadius(8)
       }
